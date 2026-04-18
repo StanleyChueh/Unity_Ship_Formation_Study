@@ -208,6 +208,30 @@ def format_depth_value(depth_value):
     return f"{depth_value:.3f}"
 
 
+def get_yolo_box_color(cls_id):
+    if cls_id == YOLO_CLASS_LEADER:
+        return (255, 0, 255)
+    if cls_id == YOLO_CLASS_FOLLOWER:
+        return (0, 255, 0)
+    return (255, 255, 255)
+
+
+def draw_labeled_box(frame, bbox, label, color, center=None, thickness=2):
+    x1, y1, x2, y2 = bbox
+    cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
+    if center is not None:
+        cv2.circle(frame, center, 5, (0, 0, 255), -1)
+    cv2.putText(
+        frame,
+        label,
+        (x1, max(y1 - 10, 20)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        color,
+        2,
+    )
+
+
 def reset_vision_state(side):
     with vision_lock:
         state = vision_states[side]
@@ -428,6 +452,7 @@ def cv_processing_thread():
                 detection_method = None
                 center_point = None
                 center_offset = 0.0
+                yolo_display_detections = []
                 wake_mask = None
                 depth_result = None
                 depth_preview = None
@@ -435,9 +460,6 @@ def cv_processing_thread():
                 if results:
                     for box in results[0].boxes:
                         cls_id = int(box.cls[0])
-                        if cls_id != YOLO_CLASS_LEADER:
-                            continue
-
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
                         area = (x2 - x1) * (y2 - y1)
                         if area < YOLO_MIN_BOX_AREA:
@@ -445,6 +467,19 @@ def cv_processing_thread():
                         if y1 < height * IGNORE_TOP_RATIO:
                             continue
                         if y2 > height * (1.0 - IGNORE_BOTTOM_RATIO):
+                            continue
+
+                        yolo_display_detections.append(
+                            {
+                                "bbox": (x1, y1, x2, y2),
+                                "area": area,
+                                "cls_id": cls_id,
+                                "cls_name": get_model_class_name(model, cls_id),
+                                "center": ((x1 + x2) // 2, (y1 + y2) // 2),
+                            }
+                        )
+
+                        if cls_id != YOLO_CLASS_LEADER:
                             continue
 
                         candidate_offset = (((x1 + x2) / 2.0) - (width / 2.0)) / (width / 2.0)
@@ -583,25 +618,40 @@ def cv_processing_thread():
                             overlay_depth_status = state["depth_status"]
 
                 if SHOW_WINDOW and display_frame is not None:
-                    if best_box is not None:
-                        x1, y1, x2, y2 = best_box
-                        color = (255, 0, 255) if detection_method == "YOLO" else (0, 255, 255)
-                        if detection_method == "YOLO":
-                            label = f"YOLO({best_cls_name}): {best_area:.0f}"
-                        else:
-                            label = f"WAKE Area: {best_area:.0f}"
-                        cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
-                        if center_point is not None:
-                            cv2.circle(display_frame, center_point, 5, (0, 0, 255), -1)
-                        cv2.putText(
+                    for detection in yolo_display_detections:
+                        det_box = detection["bbox"]
+                        det_cls_id = detection["cls_id"]
+                        det_color = get_yolo_box_color(det_cls_id)
+                        det_label = f"YOLO({detection['cls_name']}): {detection['area']:.0f}"
+                        det_thickness = 2
+
+                        if (
+                            detection_method == "YOLO"
+                            and best_box is not None
+                            and det_box == best_box
+                            and det_cls_id == YOLO_CLASS_LEADER
+                        ):
+                            det_label += " [target]"
+                            det_thickness = 3
+
+                        draw_labeled_box(
                             display_frame,
-                            label,
-                            (x1, max(y1 - 10, 20)),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.6,
-                            color,
-                            2,
+                            det_box,
+                            det_label,
+                            det_color,
+                            center=detection["center"] if det_box == best_box else None,
+                            thickness=det_thickness,
                         )
+
+                    if best_box is not None:
+                        if detection_method == "WAKE":
+                            draw_labeled_box(
+                                display_frame,
+                                best_box,
+                                f"WAKE Area: {best_area:.0f}",
+                                (0, 255, 255),
+                                center=center_point,
+                            )
                     else:
                         time_since_seen = current_time - prev_state.get("last_detection_time", 0.0)
                         if prev_state.get("last_known_method") is not None and time_since_seen <= TRACK_HOLD_SEC:
