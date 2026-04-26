@@ -9,6 +9,14 @@ public class SimpleCameraFollow : MonoBehaviour
     [Header("自動鎖定領航船")]
     public bool autoFindLeaderTarget = true;
     public string leaderTargetName = "leader";
+    public bool tryFindByTagFirst = true;
+    public string leaderTargetTag = "Leader";
+
+    [Header("輸出顯示")]
+    public bool forceCameraTargetDisplay = true;
+    [Tooltip("0=Display1, 1=Display2, 2=Display3")]
+    public int cameraTargetDisplay = 2;
+    public bool autoActivateDisplayOnStart = true;
 
     [Header("多船追蹤 (可選)")]
     public Transform[] targets;
@@ -30,6 +38,7 @@ public class SimpleCameraFollow : MonoBehaviour
 
     void Start()
     {
+        SetupDisplay();
         ResolveTarget();
 
         var underwater = GetComponent("Suimono_UnderwaterFog");
@@ -39,11 +48,59 @@ public class SimpleCameraFollow : MonoBehaviour
         }
     }
 
+    void SetupDisplay()
+    {
+        Camera cam = GetComponent<Camera>();
+        if (cam != null && forceCameraTargetDisplay)
+        {
+            cam.targetDisplay = Mathf.Max(0, cameraTargetDisplay);
+            Debug.Log($"[SimpleCameraFollow] Camera target display set to {cam.targetDisplay + 1}");
+        }
+
+        if (!autoActivateDisplayOnStart)
+        {
+            return;
+        }
+
+        int displayIndex = Mathf.Max(0, cameraTargetDisplay);
+        if (displayIndex == 0)
+        {
+            return;
+        }
+
+        if (Display.displays == null || displayIndex >= Display.displays.Length)
+        {
+            Debug.LogWarning($"[SimpleCameraFollow] Display {displayIndex + 1} is unavailable. Connected displays: {(Display.displays == null ? 0 : Display.displays.Length)}");
+            return;
+        }
+
+        Display.displays[displayIndex].Activate();
+        Debug.Log($"[SimpleCameraFollow] Activated Display {displayIndex + 1}");
+    }
+
     void ResolveTarget()
     {
         if (!autoFindLeaderTarget || target != null)
         {
             return;
+        }
+
+        if (tryFindByTagFirst && !string.IsNullOrEmpty(leaderTargetTag))
+        {
+            try
+            {
+                GameObject taggedLeader = GameObject.FindGameObjectWithTag(leaderTargetTag);
+                if (taggedLeader != null)
+                {
+                    target = taggedLeader.transform;
+                    Debug.Log($"[SimpleCameraFollow] Tracking leader target by tag '{leaderTargetTag}': {target.name}");
+                    return;
+                }
+            }
+            catch (UnityException)
+            {
+                // Tag not defined in project settings. Fall back to name search.
+            }
         }
 
         GameObject leaderObject = GameObject.Find(leaderTargetName);
