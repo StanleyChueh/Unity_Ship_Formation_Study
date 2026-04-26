@@ -3,6 +3,7 @@ import socket
 import struct
 import threading
 import time
+import math
 
 import cv2
 import numpy as np
@@ -78,6 +79,33 @@ LEADER_START_CONFIRM_SEC = 0.75
 DISABLE_SEARCH_MODE = True
 
 # =========================================================
+# 2.1) 深度融合控制 (提升純視覺穩定性)
+# =========================================================
+USE_DEPTH_FUSION_CONTROL = True
+DEPTH_STD_MAX_RELIABLE = 0.14
+DEPTH_NEAR_BRAKE_START = 0.62
+DEPTH_NEAR_BRAKE_MIN_SCALE = 0.10
+DEPTH_FAR_BOOST_END = 0.35
+DEPTH_FAR_BOOST = 0.06
+DEPTH_NOISY_DAMP_STEER = 0.75
+DEPTH_NOISY_DAMP_THROTTLE = 0.70
+
+# =========================================================
+# 3.1) 編隊維持與失追補償參數
+# =========================================================
+FORMATION_STEER_KP = 0.08
+FORMATION_LONG_KP = 0.05
+FORMATION_SPEED_KP = 0.12
+FORMATION_MAX_STEER_BIAS = 0.35
+FORMATION_MAX_THROTTLE_BIAS = 0.18
+FORMATION_HOLD_THROTTLE_BASE = 0.10
+FORMATION_CLOSE_ENOUGH_M = 0.80
+LEADER_STOP_SPEED_MPS = 0.20
+FORMATION_STOP_STEER_SCALE = 1.6
+FORMATION_STOP_MAX_STEER = 0.45
+FORMATION_STOP_MAX_THROTTLE = 0.22
+
+# =========================================================
 # 3) 純視覺 PID 控制參數設定
 # =========================================================
 KV_STEER = 1.2
@@ -151,6 +179,40 @@ frame_lock = threading.Lock()
 latest_frames = {"Left": None, "Right": None}
 display_frames = {"Left": None, "Right": None}
 
+formation_targets = {
+    "Left": {
+        "initialized": False,
+        "desired_lateral": 0.0,
+        "desired_longitudinal": 0.0,
+    },
+    "Right": {
+        "initialized": False,
+        "desired_lateral": 0.0,
+        "desired_longitudinal": 0.0,
+    },
+}
+
+depth_fusion_state = {
+    "Left": {
+        "has_prev": False,
+        "last_depth": None,
+        "last_area": None,
+        "min_depth": None,
+        "max_depth": None,
+        "corr_score": 0.0,
+        "near_sign": 1.0,
+    },
+    "Right": {
+        "has_prev": False,
+        "last_depth": None,
+        "last_area": None,
+        "min_depth": None,
+        "max_depth": None,
+        "corr_score": 0.0,
+        "near_sign": 1.0,
+    },
+}
+
 
 # =========================================================
 # 工具函式
@@ -191,6 +253,23 @@ def clamp(value, low, high):
 
 def blend_value(previous, current, alpha):
     return previous + (current - previous) * alpha
+
+
+def world_to_leader_frame(dx, dz, leader_yaw_deg):
+    yaw = math.radians(leader_yaw_deg)
+
+    # Unity world forward(+Z) at yaw=0:
+    # forward = (sin(yaw), cos(yaw)) on XZ plane
+    fwd_x = math.sin(yaw)
+    fwd_z = math.cos(yaw)
+
+    # Right vector on XZ plane
+    right_x = math.cos(yaw)
+    right_z = -math.sin(yaw)
+
+    longitudinal = dx * fwd_x + dz * fwd_z
+    lateral = dx * right_x + dz * right_z
+    return lateral, longitudinal
 
 
 def get_model_class_name(model, cls_id):
@@ -748,12 +827,66 @@ def process_boat_vision_based(sock, tx_port, side):
     offset_x = vision_state["target_center_offset"]
     area = vision_state["target_area"]
     depth = vision_state.get("target_depth")
+    depth_conf = vision_state.get("target_depth_confidence", 0.0)
     depth_status = vision_state.get("depth_status", "Depth disabled")
     last_known_offset = vision_state.get("last_known_offset", 0.0)
     lost_search_dir = vision_state.get("lost_search_dir", 1.0)
     leader_motion_since = vision_state.get("leader_motion_since", 0.0)
     movement_started = vision_state.get("movement_started", False)
     leader_speed = state.get("leader_speed", 0.0)
+    own_speed = state.get("speed", 0.0)
+
+    boat_x = state.get("x", None)
+    boat_z = state.get("z", None)
+    leader_x = state.get("leader_x", None)
+    leader_z = state.get("leader_z", None)
+    leader_yaw = state.get("leader_yaw", 0.0)
+
+    has_pose = None not in (boat_x, boat_z, leader_x, leader_z)
+
+    formation = formation_targets[side]
+    formation_ready = formation.get("initialized", False)
+    error_lat = 0.0
+    error_long = 0.0
+    formation_steer_bias = 0.0
+    formation_throttle_bias = 0.0
+
+    if has_pose:
+        dx = boat_x - leader_x
+        dz = boat_z - leader_z
+        current_lat, current_long = world_to_leader_frame(dx, dz, leader_yaw)
+
+        if not formation_ready:
+            formation["desired_lateral"] = current_lat
+            formation["desired_longitudinal"] = current_long
+            formation["initialized"] = True
+            formation_ready = True
+            print(
+                f"[Formation-{side}] Locked desired offset: "
+                f"lat={current_lat:.2f}m long={current_long:.2f}m"
+            )
+
+        if formation_ready:
+            error_lat = formation["desired_lateral"] - current_lat
+            error_long = formation["desired_longitudinal"] - current_long
+
+            formation_steer_bias = clamp(
+                FORMATION_STEER_KP * error_lat,
+                -FORMATION_MAX_STEER_BIAS,
+                FORMATION_MAX_STEER_BIAS,
+            )
+
+            speed_match_bias = clamp(
+                FORMATION_SPEED_KP * (leader_speed - own_speed),
+                -FORMATION_MAX_THROTTLE_BIAS,
+                FORMATION_MAX_THROTTLE_BIAS,
+            )
+
+            formation_throttle_bias = clamp(
+                FORMATION_LONG_KP * error_long + speed_match_bias,
+                -FORMATION_MAX_THROTTLE_BIAS,
+                FORMATION_MAX_THROTTLE_BIAS,
+            )
 
     throttle = 1.0
     steer = 0.0
@@ -797,7 +930,29 @@ def process_boat_vision_based(sock, tx_port, side):
                 "speed_knots": speed_mps * 1.94384,
             }
 
-    if is_detected:
+    leader_is_stopped = leader_speed <= LEADER_STOP_SPEED_MPS
+
+    # Leader 幾乎停止時，切到「編隊定點保持」優先，
+    # 避免視覺面積/置中控制持續推進造成繞圈。
+    if leader_is_stopped and formation_ready and has_pose:
+        steer = clamp(
+            formation_steer_bias * FORMATION_STOP_STEER_SCALE,
+            -FORMATION_STOP_MAX_STEER,
+            FORMATION_STOP_MAX_STEER,
+        )
+
+        if abs(error_long) <= FORMATION_CLOSE_ENOUGH_M and abs(error_lat) <= FORMATION_CLOSE_ENOUGH_M:
+            throttle = 0.0
+            steer = 0.0
+        else:
+            if error_long < -FORMATION_CLOSE_ENOUGH_M:
+                # 太靠近 leader（比目標更前/更近）時不再推進。
+                throttle = 0.0
+            else:
+                throttle = FORMATION_HOLD_THROTTLE_BASE + max(0.0, formation_throttle_bias)
+                throttle = min(throttle, FORMATION_STOP_MAX_THROTTLE)
+
+    elif is_detected:
         if method == "YOLO":
             target_opt, target_min, target_max = YOLO_AREA_OPT, YOLO_AREA_MIN, YOLO_AREA_MAX
         else:
@@ -807,6 +962,9 @@ def process_boat_vision_based(sock, tx_port, side):
             steer = clamp(offset_x * KV_STEER, -1.0, 1.0)
         else:
             steer = 0.0
+
+        if formation_ready:
+            steer += formation_steer_bias
 
         if steer != 0.0:
             with vision_lock:
@@ -820,6 +978,9 @@ def process_boat_vision_based(sock, tx_port, side):
         else:
             throttle = FOLLOW_BASE_THROTTLE + (error_area * KV_THROTTLE_P)
 
+        if formation_ready:
+            throttle += formation_throttle_bias
+
         if abs(steer) > 0.4:
             throttle *= 0.5
 
@@ -828,20 +989,81 @@ def process_boat_vision_based(sock, tx_port, side):
             if throttle > 0.0:
                 throttle = max(throttle * STALE_TARGET_THROTTLE_SCALE, SEARCH_FORWARD_THROTTLE)
     else:
-        if DISABLE_SEARCH_MODE:
-            throttle = 0.0
-            steer = 0.0
+        # 視覺失追時，優先用「相對 Leader 的世界座標編隊誤差」補償，
+        # 讓船回到初始編隊，而不是原地發呆或盲目搜尋。
+        if formation_ready and has_pose:
+            steer = clamp(formation_steer_bias * 1.2, -SEARCH_MODE_STEER, SEARCH_MODE_STEER)
+            throttle = FORMATION_HOLD_THROTTLE_BASE + max(0.0, formation_throttle_bias)
+
+            if abs(error_long) <= FORMATION_CLOSE_ENOUGH_M and abs(error_lat) <= FORMATION_CLOSE_ENOUGH_M:
+                throttle = 0.0
         else:
-            # 沒看到目標時低速前進，並往最後觀測到的方向搜尋。
-            throttle = SEARCH_FORWARD_THROTTLE
-            if abs(last_known_offset) > STEER_DEADZONE_H:
-                steer = clamp(
-                    last_known_offset * KV_STEER * SEARCH_STEER_GAIN,
-                    -SEARCH_MODE_STEER,
-                    SEARCH_MODE_STEER,
-                )
+            if DISABLE_SEARCH_MODE:
+                throttle = 0.0
+                steer = 0.0
             else:
-                steer = lost_search_dir * SEARCH_MODE_STEER
+                # 沒看到目標時低速前進，並往最後觀測到的方向搜尋。
+                throttle = SEARCH_FORWARD_THROTTLE
+                if abs(last_known_offset) > STEER_DEADZONE_H:
+                    steer = clamp(
+                        last_known_offset * KV_STEER * SEARCH_STEER_GAIN,
+                        -SEARCH_MODE_STEER,
+                        SEARCH_MODE_STEER,
+                    )
+                else:
+                    steer = lost_search_dir * SEARCH_MODE_STEER
+
+    # =====================================================
+    # 深度融合控制 (自動學習 depth 近遠方向)
+    # =====================================================
+    depth_is_reliable = (
+        USE_DEPTH_FUSION_CONTROL
+        and is_detected
+        and (depth is not None)
+        and (depth_conf is not None)
+        and (depth_conf <= DEPTH_STD_MAX_RELIABLE)
+    )
+
+    if USE_DEPTH_FUSION_CONTROL:
+        ds = depth_fusion_state[side]
+
+        if depth_is_reliable:
+            if ds["min_depth"] is None:
+                ds["min_depth"] = float(depth)
+                ds["max_depth"] = float(depth)
+            else:
+                ds["min_depth"] = min(ds["min_depth"], float(depth))
+                ds["max_depth"] = max(ds["max_depth"], float(depth))
+
+            if ds["has_prev"] and ds["last_depth"] is not None and ds["last_area"] is not None:
+                d_depth = float(depth) - float(ds["last_depth"])
+                d_area = float(area) - float(ds["last_area"])
+                if abs(d_depth) > 1e-4 and abs(d_area) > 5.0:
+                    ds["corr_score"] += 1.0 if (d_depth * d_area) >= 0.0 else -1.0
+                    ds["corr_score"] = clamp(ds["corr_score"], -30.0, 30.0)
+                    ds["near_sign"] = 1.0 if ds["corr_score"] >= 0.0 else -1.0
+
+            ds["last_depth"] = float(depth)
+            ds["last_area"] = float(area)
+            ds["has_prev"] = True
+
+            depth_span = (ds["max_depth"] - ds["min_depth"]) if (ds["max_depth"] is not None and ds["min_depth"] is not None) else 0.0
+            if depth_span > 1e-5:
+                depth_norm = (float(depth) - ds["min_depth"]) / depth_span
+                near_score = depth_norm if ds["near_sign"] > 0.0 else (1.0 - depth_norm)
+
+                if near_score >= DEPTH_NEAR_BRAKE_START:
+                    t = (near_score - DEPTH_NEAR_BRAKE_START) / max(1e-5, (1.0 - DEPTH_NEAR_BRAKE_START))
+                    brake_scale = 1.0 - t * (1.0 - DEPTH_NEAR_BRAKE_MIN_SCALE)
+                    throttle *= clamp(brake_scale, DEPTH_NEAR_BRAKE_MIN_SCALE, 1.0)
+                elif near_score <= DEPTH_FAR_BOOST_END and not leader_is_stopped:
+                    far_gain = (DEPTH_FAR_BOOST_END - near_score) / max(1e-5, DEPTH_FAR_BOOST_END)
+                    throttle += DEPTH_FAR_BOOST * clamp(far_gain, 0.0, 1.0)
+        else:
+            # 深度不穩時，降低激進控制，避免亂轉與過衝。
+            if depth is not None:
+                throttle *= DEPTH_NOISY_DAMP_THROTTLE
+                steer *= DEPTH_NOISY_DAMP_STEER
 
     throttle = clamp(throttle, 0.0, FOLLOW_MAX_THROTTLE)
     steer = clamp(steer, -1.0, 1.0)
@@ -858,8 +1080,11 @@ def process_boat_vision_based(sock, tx_port, side):
         "steer": steer,
         "area": area if is_detected else 0.0,
         "depth": depth,
+        "depth_conf": depth_conf,
         "depth_status": depth_status,
         "offset": offset_x if is_detected else 0.0,
+        "formation_error_lat": error_lat,
+        "formation_error_long": error_long,
         "speed_knots": speed_mps * 1.94384,
     }
 
