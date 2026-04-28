@@ -60,11 +60,23 @@ YOLO_MIN_BOX_AREA = 300
 IGNORE_TOP_RATIO = 0.25
 IGNORE_BOTTOM_RATIO = 0.18
 
-WAKE_LOWER_WHITE = np.array([0, 0, 240], dtype=np.uint8)
-WAKE_UPPER_WHITE = np.array([180, 50, 255], dtype=np.uint8)
+WAKE_LOWER_WHITE = np.array([0, 0, 220], dtype=np.uint8)
+WAKE_UPPER_WHITE = np.array([180, 55, 255], dtype=np.uint8)
 WAKE_SKY_CROP_RATIO = 0.50
-WAKE_BOAT_CROP_RATIO = 0.75
+WAKE_BOAT_CROP_RATIO = 0.90
 WAKE_MASK_PREVIEW_SCALE = 0.30
+WAKE_IGNORE_BOTTOM_RATIO = 0.12
+WAKE_MIN_BBOX_HEIGHT = 14
+WAKE_MIN_BBOX_WIDTH = 8
+WAKE_MIN_ASPECT_RATIO = 1.25
+WAKE_MIN_FILL_RATIO = 0.16
+WAKE_MAX_CENTER_OFFSET = 0.42
+WAKE_MAX_OFFSET_FROM_TRACK = 0.18
+WAKE_MAX_OFFSET_FROM_YOLO = 0.12
+WAKE_MAX_TOP_GAP_FROM_YOLO_RATIO = 0.14
+WAKE_OPEN_KERNEL = (3, 3)
+WAKE_CLOSE_KERNEL = (21, 5)
+WAKE_DILATE_KERNEL = (5, 3)
 
 TRACK_HOLD_SEC = 0.60
 TRACK_REACQUIRE_BIAS = 0.35
@@ -72,11 +84,27 @@ TRACK_OFFSET_ALPHA = 0.35
 TRACK_AREA_ALPHA = 0.25
 STALE_TARGET_THROTTLE_SCALE = 0.65
 STALE_TARGET_STEER_SCALE = 0.85
-SEARCH_FORWARD_THROTTLE = 0.18
-SEARCH_STEER_GAIN = 0.75
+SEARCH_FORWARD_THROTTLE = 0.24
+SEARCH_STEER_GAIN = 0.85
 LEADER_START_SPEED_MPS = 0.35
 LEADER_START_CONFIRM_SEC = 0.75
 DISABLE_SEARCH_MODE = True
+VISUAL_FAR_BOOST_MAX = 0.16
+VISUAL_SHRINK_BOOST_MAX = 0.08
+VISUAL_FAR_BOOST_EXPONENT = 1.35
+FOLLOW_FAR_MAX_THROTTLE = 0.68
+PREDICTION_HORIZON_SEC = 0.40
+PREDICTION_OFFSET_BLEND = 0.55
+PREDICTION_AREA_BLEND = 0.35
+PREDICTION_VELOCITY_ALPHA = 0.35
+PREDICTION_STALE_DECAY = 0.88
+PREDICTION_MAX_OFFSET_DELTA = 0.35
+PREDICTION_MAX_AREA_DELTA_RATIO = 0.45
+PREDICTION_IDLE_DECAY = 0.60
+PREDICTION_MIN_OFFSET_STEP = 0.012
+PREDICTION_MIN_VERTICAL_STEP = 0.010
+PREDICTION_MIN_AREA_RATIO_STEP = 0.045
+PREDICTION_CONTROL_MIN_CONF = 0.32
 
 # =========================================================
 # 2.1) 深度融合控制 (提升純視覺穩定性)
@@ -97,23 +125,30 @@ FORMATION_STEER_KP = 0.08
 FORMATION_LONG_KP = 0.05
 FORMATION_SPEED_KP = 0.12
 FORMATION_MAX_STEER_BIAS = 0.35
-FORMATION_MAX_THROTTLE_BIAS = 0.18
-FORMATION_HOLD_THROTTLE_BASE = 0.10
+FORMATION_MAX_THROTTLE_BIAS = 0.22
+FORMATION_HOLD_THROTTLE_BASE = 0.12
 FORMATION_CLOSE_ENOUGH_M = 0.80
 LEADER_STOP_SPEED_MPS = 0.20
 FORMATION_STOP_STEER_SCALE = 1.6
 FORMATION_STOP_MAX_STEER = 0.45
 FORMATION_STOP_MAX_THROTTLE = 0.22
+YOLO_TRACK_STEER_GAIN = 1.06
+YOLO_TRACK_THROTTLE_GAIN = 1.08
+WAKE_TRACK_STEER_GAIN = 0.90
+WAKE_TRACK_THROTTLE_GAIN = 0.82
+WAKE_TRACK_AREA_BIAS = 0.88
+STALE_TRACK_STEER_GAIN = 0.80
+STALE_TRACK_THROTTLE_GAIN = 0.80
 
 # =========================================================
 # 3) 純視覺 PID 控制參數設定
 # =========================================================
-KV_STEER = 1.2
-STEER_DEADZONE_H = 0.05
+KV_STEER = 1.35
+STEER_DEADZONE_H = 0.035
 SEARCH_MODE_STEER = 0.5
-KV_THROTTLE_P = 0.00015
-FOLLOW_BASE_THROTTLE = 0.35
-FOLLOW_MAX_THROTTLE = 0.45
+KV_THROTTLE_P = 0.00018
+FOLLOW_BASE_THROTTLE = 0.40
+FOLLOW_MAX_THROTTLE = 0.52
 
 # YOLO 距離設定
 YOLO_AREA_OPT = 250000
@@ -122,9 +157,16 @@ YOLO_AREA_MAX = 350000
 
 # WAKE(尾流) 傳統視覺距離設定
 WAKE_AREA_OPT = 2000
-WAKE_AREA_MIN = 500
+WAKE_AREA_MIN = 650
 WAKE_AREA_MAX = 5000
-MIN_WAKE_CONTOUR = 150
+MIN_WAKE_CONTOUR = 220
+FUSION_YOLO_OFFSET_WEIGHT = 0.78
+FUSION_WAKE_OFFSET_WEIGHT = 0.26
+FUSION_MAX_OFFSET_GAP = 0.45
+FUSION_MIN_WAKE_WEIGHT = 0.08
+PREDICTION_ARROW_MIN_CONF = 0.12
+PREDICTION_ARROW_PIXELS = 90
+PREDICTION_ARROW_MIN_PIXELS = 18
 
 # =========================================================
 # 4) 共享狀態區
@@ -151,6 +193,16 @@ vision_states = {
         "last_known_method": None,
         "leader_motion_since": 0.0,
         "movement_started": False,
+        "track_prev_measurement_time": 0.0,
+        "track_prev_center_offset": 0.0,
+        "track_prev_center_y": 0.0,
+        "track_prev_area": 0.0,
+        "track_offset_velocity": 0.0,
+        "track_vertical_velocity": 0.0,
+        "track_area_velocity": 0.0,
+        "predicted_offset": 0.0,
+        "predicted_area": 0.0,
+        "prediction_confidence": 0.0,
     },
     "Right": {
         "connected": False,
@@ -172,6 +224,16 @@ vision_states = {
         "last_known_method": None,
         "leader_motion_since": 0.0,
         "movement_started": False,
+        "track_prev_measurement_time": 0.0,
+        "track_prev_center_offset": 0.0,
+        "track_prev_center_y": 0.0,
+        "track_prev_area": 0.0,
+        "track_offset_velocity": 0.0,
+        "track_vertical_velocity": 0.0,
+        "track_area_velocity": 0.0,
+        "predicted_offset": 0.0,
+        "predicted_area": 0.0,
+        "prediction_confidence": 0.0,
     },
 }
 
@@ -255,6 +317,238 @@ def blend_value(previous, current, alpha):
     return previous + (current - previous) * alpha
 
 
+def get_tracking_gains(method, is_stale):
+    if method == "YOLO":
+        steer_gain = YOLO_TRACK_STEER_GAIN
+        throttle_gain = YOLO_TRACK_THROTTLE_GAIN
+    elif method == "FUSED":
+        steer_gain = YOLO_TRACK_STEER_GAIN
+        throttle_gain = YOLO_TRACK_THROTTLE_GAIN
+    elif method == "WAKE":
+        steer_gain = WAKE_TRACK_STEER_GAIN
+        throttle_gain = WAKE_TRACK_THROTTLE_GAIN
+    else:
+        steer_gain = 1.0
+        throttle_gain = 1.0
+
+    if is_stale:
+        steer_gain *= STALE_TRACK_STEER_GAIN
+        throttle_gain *= STALE_TRACK_THROTTLE_GAIN
+
+    return steer_gain, throttle_gain
+
+
+def update_track_prediction(state, center_offset, center_y_norm, area, current_time):
+    prev_time = state.get("track_prev_measurement_time", 0.0)
+    prev_offset = state.get("track_prev_center_offset", center_offset)
+    prev_center_y = state.get("track_prev_center_y", center_y_norm)
+    prev_area = state.get("track_prev_area", area)
+
+    predicted_offset = center_offset
+    predicted_area = area
+    confidence = 0.0
+
+    if prev_time > 0.0:
+        dt = current_time - prev_time
+        if 1e-3 < dt <= 1.0:
+            d_offset = center_offset - prev_offset
+            d_vertical = center_y_norm - prev_center_y
+            d_area = area - prev_area
+            area_ref = max(area, prev_area, 1.0)
+            area_ratio_step = abs(d_area) / area_ref
+
+            if abs(d_offset) < PREDICTION_MIN_OFFSET_STEP:
+                d_offset = 0.0
+            if abs(d_vertical) < PREDICTION_MIN_VERTICAL_STEP:
+                d_vertical = 0.0
+            if area_ratio_step < PREDICTION_MIN_AREA_RATIO_STEP:
+                d_area = 0.0
+
+            raw_offset_velocity = d_offset / dt
+            raw_vertical_velocity = d_vertical / dt
+            raw_area_velocity = d_area / dt
+
+            offset_motion = clamp(abs(d_offset) / 0.08, 0.0, 1.0)
+            vertical_motion = clamp(abs(d_vertical) / 0.08, 0.0, 1.0)
+            area_motion = clamp(area_ratio_step / 0.30, 0.0, 1.0)
+            motion_score = max(offset_motion, vertical_motion, area_motion)
+
+            if motion_score <= 1e-4:
+                state["track_offset_velocity"] *= PREDICTION_IDLE_DECAY
+                state["track_vertical_velocity"] *= PREDICTION_IDLE_DECAY
+                state["track_area_velocity"] *= PREDICTION_IDLE_DECAY
+                predicted_offset = center_offset
+                predicted_area = area
+                confidence = 0.0
+            else:
+                state["track_offset_velocity"] = blend_value(
+                    state.get("track_offset_velocity", 0.0),
+                    raw_offset_velocity,
+                    PREDICTION_VELOCITY_ALPHA,
+                )
+                state["track_vertical_velocity"] = blend_value(
+                    state.get("track_vertical_velocity", 0.0),
+                    raw_vertical_velocity,
+                    PREDICTION_VELOCITY_ALPHA,
+                )
+                state["track_area_velocity"] = blend_value(
+                    state.get("track_area_velocity", 0.0),
+                    raw_area_velocity,
+                    PREDICTION_VELOCITY_ALPHA,
+                )
+
+                predicted_offset_delta = clamp(
+                    state["track_offset_velocity"] * PREDICTION_HORIZON_SEC,
+                    -PREDICTION_MAX_OFFSET_DELTA,
+                    PREDICTION_MAX_OFFSET_DELTA,
+                )
+                predicted_offset = clamp(center_offset + predicted_offset_delta, -1.0, 1.0)
+
+                max_area_delta = max(area, prev_area, 1.0) * PREDICTION_MAX_AREA_DELTA_RATIO
+                predicted_area_delta = clamp(
+                    state["track_area_velocity"] * PREDICTION_HORIZON_SEC,
+                    -max_area_delta,
+                    max_area_delta,
+                )
+                predicted_area = max(0.0, area + predicted_area_delta)
+                cadence_score = clamp(1.0 - abs(dt - 0.1) / 0.4, 0.0, 1.0)
+                confidence = cadence_score * motion_score
+        else:
+            state["track_offset_velocity"] *= PREDICTION_STALE_DECAY
+            state["track_vertical_velocity"] *= PREDICTION_STALE_DECAY
+            state["track_area_velocity"] *= PREDICTION_STALE_DECAY
+            confidence = state.get("prediction_confidence", 0.0) * PREDICTION_STALE_DECAY
+
+    state["track_prev_measurement_time"] = current_time
+    state["track_prev_center_offset"] = center_offset
+    state["track_prev_center_y"] = center_y_norm
+    state["track_prev_area"] = area
+    state["predicted_offset"] = predicted_offset
+    state["predicted_area"] = predicted_area
+    state["prediction_confidence"] = confidence
+
+
+def compute_visual_far_boost(area, predicted_area, area_velocity, target_opt, method):
+    target_opt = max(float(target_opt), 1.0)
+    size_gap = clamp((target_opt - float(area)) / target_opt, 0.0, 1.0)
+    boost = VISUAL_FAR_BOOST_MAX * (size_gap ** VISUAL_FAR_BOOST_EXPONENT)
+
+    predicted_gap = clamp((target_opt - float(predicted_area)) / target_opt, 0.0, 1.0)
+    boost += VISUAL_FAR_BOOST_MAX * 0.5 * predicted_gap * PREDICTION_AREA_BLEND
+
+    if area_velocity < 0.0:
+        shrink_ratio = clamp((-float(area_velocity)) / target_opt, 0.0, 1.0)
+        boost += VISUAL_SHRINK_BOOST_MAX * shrink_ratio
+
+    if method == "WAKE":
+        boost *= WAKE_TRACK_AREA_BIAS
+
+    return clamp(boost, 0.0, FOLLOW_FAR_MAX_THROTTLE - FOLLOW_BASE_THROTTLE)
+
+
+def build_track_candidate(bbox, area, center_offset, center, method):
+    return {
+        "bbox": bbox,
+        "area": area,
+        "center_offset": center_offset,
+        "center": center,
+        "method": method,
+    }
+
+
+def fuse_track_sources(yolo_target, wake_target):
+    if yolo_target is None and wake_target is None:
+        return None
+
+    if yolo_target is None:
+        fused = wake_target.copy()
+        fused["method"] = "WAKE"
+        fused["wake_weight"] = 1.0
+        return fused
+
+    if wake_target is None:
+        fused = yolo_target.copy()
+        fused["method"] = "YOLO"
+        fused["wake_weight"] = 0.0
+        return fused
+
+    offset_gap = abs(yolo_target["center_offset"] - wake_target["center_offset"])
+    wake_agreement = clamp(1.0 - (offset_gap / max(FUSION_MAX_OFFSET_GAP, 1e-5)), 0.0, 1.0)
+
+    yolo_weight = FUSION_YOLO_OFFSET_WEIGHT
+    wake_weight = FUSION_WAKE_OFFSET_WEIGHT * wake_agreement
+
+    if wake_weight < FUSION_MIN_WAKE_WEIGHT:
+        fused = yolo_target.copy()
+        fused["method"] = "YOLO"
+        fused["wake_weight"] = 0.0
+        return fused
+
+    weight_sum = yolo_weight + wake_weight
+    fused_offset = (
+        yolo_target["center_offset"] * yolo_weight
+        + wake_target["center_offset"] * wake_weight
+    ) / max(weight_sum, 1e-5)
+
+    yolo_center = yolo_target["center"]
+    wake_center = wake_target["center"]
+    fused_center_x = int(round(
+        (yolo_center[0] * yolo_weight + wake_center[0] * wake_weight) / max(weight_sum, 1e-5)
+    ))
+
+    # Keep the vertical anchor near the leader bbox when available.
+    fused_center = (fused_center_x, yolo_center[1])
+
+    fused = yolo_target.copy()
+    fused["center_offset"] = fused_offset
+    fused["center"] = fused_center
+    fused["method"] = "FUSED"
+    fused["wake_weight"] = wake_weight / max(weight_sum, 1e-5)
+    return fused
+
+
+def draw_prediction_arrow(frame, center_point, offset_velocity, vertical_velocity, confidence):
+    if frame is None or center_point is None:
+        return
+
+    if confidence < PREDICTION_ARROW_MIN_CONF:
+        return
+
+    height, width = frame.shape[:2]
+    vx = float(offset_velocity) * (width * 0.5)
+    vy = float(vertical_velocity) * height
+    magnitude = math.hypot(vx, vy)
+    if magnitude < PREDICTION_ARROW_MIN_PIXELS:
+        return
+
+    scale = PREDICTION_ARROW_PIXELS * clamp(confidence, 0.35, 1.0) / magnitude
+    end_x = int(round(center_point[0] + vx * scale))
+    end_y = int(round(center_point[1] + vy * scale))
+    end_x = int(clamp(end_x, 0, width - 1))
+    end_y = int(clamp(end_y, 0, height - 1))
+
+    if end_x == center_point[0] and end_y == center_point[1]:
+        return
+
+    cv2.arrowedLine(
+        frame,
+        center_point,
+        (end_x, end_y),
+        (0, 165, 255),
+        2,
+        tipLength=0.25,
+    )
+    cv2.putText(
+        frame,
+        f"traj {confidence:.2f}",
+        (center_point[0] + 8, max(center_point[1] - 10, 18)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (0, 165, 255),
+        1,
+    )
+
+
 def world_to_leader_frame(dx, dz, leader_yaw_deg):
     yaw = math.radians(leader_yaw_deg)
 
@@ -331,9 +625,19 @@ def reset_vision_state(side):
         state["last_known_method"] = None
         state["leader_motion_since"] = 0.0
         state["movement_started"] = False
+        state["track_prev_measurement_time"] = 0.0
+        state["track_prev_center_offset"] = 0.0
+        state["track_prev_center_y"] = 0.0
+        state["track_prev_area"] = 0.0
+        state["track_offset_velocity"] = 0.0
+        state["track_vertical_velocity"] = 0.0
+        state["track_area_velocity"] = 0.0
+        state["predicted_offset"] = 0.0
+        state["predicted_area"] = 0.0
+        state["prediction_confidence"] = 0.0
 
 
-def detect_stern_wake(frame, preferred_offset=None):
+def detect_stern_wake(frame, preferred_offset=None, reference_bbox=None):
     height, width = frame.shape[:2]
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, WAKE_LOWER_WHITE, WAKE_UPPER_WHITE)
@@ -343,10 +647,12 @@ def detect_stern_wake(frame, preferred_offset=None):
     mask[:sky_crop, :] = 0
     mask[boat_crop:, :] = 0
 
-    kernel_open = np.ones((3, 3), np.uint8)
-    kernel_close = np.ones((1, 30), np.uint8)
+    kernel_open = np.ones(WAKE_OPEN_KERNEL, np.uint8)
+    kernel_close = np.ones(WAKE_CLOSE_KERNEL, np.uint8)
+    kernel_dilate = np.ones(WAKE_DILATE_KERNEL, np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close)
+    mask = cv2.dilate(mask, kernel_dilate, iterations=1)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -359,13 +665,55 @@ def detect_stern_wake(frame, preferred_offset=None):
         if area < MIN_WAKE_CONTOUR:
             continue
 
-        score = area
+        x, y, w_box, h_box = cv2.boundingRect(cnt)
+        if h_box < WAKE_MIN_BBOX_HEIGHT:
+            continue
+        if w_box < WAKE_MIN_BBOX_WIDTH:
+            continue
+
+        aspect_ratio = h_box / max(float(w_box), 1.0)
+        if aspect_ratio < WAKE_MIN_ASPECT_RATIO:
+            continue
+
+        fill_ratio = area / max(float(w_box * h_box), 1.0)
+        if fill_ratio < WAKE_MIN_FILL_RATIO:
+            continue
+
+        center_y_norm = (y + (h_box * 0.5)) / max(float(height), 1.0)
+        elongation_score = clamp(aspect_ratio / 2.2, 0.7, 1.7)
+        height_score = clamp(h_box / max(height * 0.18, 1.0), 0.7, 1.6)
+        mid_water_score = clamp(1.0 - abs(center_y_norm - 0.62) / 0.45, 0.55, 1.25)
+        score = area * elongation_score * height_score * mid_water_score * clamp(fill_ratio / 0.30, 0.60, 1.35)
+
+        moments = cv2.moments(cnt)
+        if moments["m00"] == 0:
+            continue
+
+        cx = moments["m10"] / moments["m00"]
+        center_offset = (cx - (width / 2.0)) / (width / 2.0)
+        if abs(center_offset) > WAKE_MAX_CENTER_OFFSET:
+            continue
+
         if preferred_offset is not None:
-            moments = cv2.moments(cnt)
-            if moments["m00"] != 0:
-                cx = moments["m10"] / moments["m00"]
-                center_offset = (cx - (width / 2.0)) / (width / 2.0)
-                score *= 1.0 - min(abs(center_offset - preferred_offset), 1.0) * TRACK_REACQUIRE_BIAS
+            offset_delta = abs(center_offset - preferred_offset)
+            if offset_delta > WAKE_MAX_OFFSET_FROM_TRACK:
+                continue
+            score *= 1.0 - min(offset_delta, 1.0) * TRACK_REACQUIRE_BIAS
+        else:
+            score *= 1.0 - min(abs(center_offset), 1.0) * 0.18
+
+        if reference_bbox is not None:
+            ref_x1, ref_y1, ref_x2, ref_y2 = reference_bbox
+            ref_center_x = (ref_x1 + ref_x2) * 0.5
+            ref_offset = (ref_center_x - (width / 2.0)) / (width / 2.0)
+            if abs(center_offset - ref_offset) > WAKE_MAX_OFFSET_FROM_YOLO:
+                continue
+
+            max_top_gap = max(16, int(height * WAKE_MAX_TOP_GAP_FROM_YOLO_RATIO))
+            if y > (ref_y2 + max_top_gap):
+                continue
+
+            score *= clamp(1.0 - abs(center_offset - ref_offset) / max(WAKE_MAX_OFFSET_FROM_YOLO, 1e-5), 0.35, 1.10)
 
         if score > best_score:
             best_score = score
@@ -385,7 +733,7 @@ def detect_stern_wake(frame, preferred_offset=None):
     center_offset = (cx - (width / 2.0)) / (width / 2.0)
 
     # 避免把接近畫面底部的自船船頭誤當成尾流。
-    if (y + h_box) > height * (1.0 - IGNORE_BOTTOM_RATIO):
+    if (y + h_box) > height * (1.0 - WAKE_IGNORE_BOTTOM_RATIO):
         return None
 
     return {
@@ -531,6 +879,10 @@ def cv_processing_thread():
                 detection_method = None
                 center_point = None
                 center_offset = 0.0
+                yolo_target = None
+                wake_target = None
+                fused_target = None
+                fusion_wake_weight = 0.0
                 yolo_display_detections = []
                 wake_mask = None
                 depth_result = None
@@ -574,33 +926,63 @@ def cv_processing_thread():
                             center_point = ((x1 + x2) // 2, (y1 + y2) // 2)
                             center_offset = candidate_offset
                             detection_method = "YOLO"
+                            yolo_target = build_track_candidate(
+                                best_box,
+                                best_area,
+                                center_offset,
+                                center_point,
+                                "YOLO",
+                            )
 
-                if best_box is None:
-                    wake_result = detect_stern_wake(frame, preferred_offset if has_recent_track else None)
-                    if wake_result is not None:
-                        best_box = wake_result["bbox"]
-                        best_area = wake_result["area"]
-                        center_offset = wake_result["center_offset"]
-                        center_point = wake_result["center"]
-                        wake_mask = wake_result["mask"]
-                        detection_method = "WAKE"
+                wake_reference_bbox = yolo_target["bbox"] if yolo_target is not None else None
+                wake_result = detect_stern_wake(
+                    frame,
+                    preferred_offset if has_recent_track else None,
+                    wake_reference_bbox,
+                )
+                if wake_result is not None:
+                    wake_mask = wake_result["mask"]
+                    wake_target = build_track_candidate(
+                        wake_result["bbox"],
+                        wake_result["area"],
+                        wake_result["center_offset"],
+                        wake_result["center"],
+                        "WAKE",
+                    )
+
+                fused_target = fuse_track_sources(yolo_target, wake_target)
+                if fused_target is not None:
+                    best_box = fused_target["bbox"]
+                    best_area = fused_target["area"]
+                    center_offset = fused_target["center_offset"]
+                    center_point = fused_target["center"]
+                    detection_method = fused_target["method"]
+                    fusion_wake_weight = fused_target.get("wake_weight", 0.0)
+                else:
+                    best_box = None
+                    best_area = 0.0
+                    center_offset = 0.0
+                    center_point = None
+                    detection_method = None
 
                 current_time = time.time()
                 cache_entry = depth_cache[side]
+                depth_roi_box = None
+                if yolo_target is not None:
+                    depth_roi_box = yolo_target["bbox"]
+                elif best_box is not None and not DEPTH_ONLY_ON_YOLO:
+                    depth_roi_box = best_box
+
                 should_run_depth = (
                     depth_estimator is not None
-                    and best_box is not None
-                    and (
-                        not DEPTH_ONLY_ON_YOLO
-                        or detection_method == "YOLO"
-                    )
+                    and depth_roi_box is not None
                     and (current_time - cache_entry["updated_at"]) >= DEPTH_UPDATE_INTERVAL_SEC
                 )
 
                 if should_run_depth:
                     depth_result = depth_estimator.estimate(
                         frame,
-                        best_box,
+                        depth_roi_box,
                         input_max_size=DEPTH_INPUT_MAX_SIZE,
                     )
                     cache_entry["updated_at"] = current_time
@@ -610,7 +992,7 @@ def cv_processing_thread():
                     else:
                         cache_entry["preview"] = None
 
-                if best_box is not None and (not DEPTH_ONLY_ON_YOLO or detection_method == "YOLO"):
+                if depth_roi_box is not None and (not DEPTH_ONLY_ON_YOLO or yolo_target is not None):
                     depth_result = cache_entry["result"]
                     depth_preview = cache_entry["preview"]
                 else:
@@ -620,6 +1002,9 @@ def cv_processing_thread():
                 dt = current_time - times_dict[side]
                 times_dict[side] = current_time
                 fps = 1.0 / dt if dt > 0 else 0.0
+                overlay_offset_velocity = 0.0
+                overlay_vertical_velocity = 0.0
+                overlay_prediction_conf = 0.0
 
                 with vision_lock:
                     state = vision_states[side]
@@ -632,6 +1017,9 @@ def cv_processing_thread():
                         if state.get("last_detection_time", 0.0) > 0.0:
                             center_offset = blend_value(previous_offset, center_offset, TRACK_OFFSET_ALPHA)
                             best_area = blend_value(previous_area, best_area, TRACK_AREA_ALPHA)
+
+                        center_y_norm = (center_point[1] / float(height)) if center_point is not None else 0.5
+                        update_track_prediction(state, center_offset, center_y_norm, best_area, current_time)
 
                         state["target_detected"] = True
                         state["target_stale"] = False
@@ -657,7 +1045,7 @@ def cv_processing_thread():
                             state["target_depth"] = None
                             state["target_depth_confidence"] = 0.0
                             state["depth_inference_ms"] = 0.0
-                            if depth_estimator is not None and detection_method != "YOLO" and DEPTH_ONLY_ON_YOLO:
+                            if depth_estimator is not None and yolo_target is None and DEPTH_ONLY_ON_YOLO:
                                 state["depth_status"] = "Depth waiting for YOLO boat"
                             elif depth_estimator is not None:
                                 state["depth_status"] = "Depth cached/idle"
@@ -668,6 +1056,9 @@ def cv_processing_thread():
                         state["last_known_area"] = best_area
                         state["last_known_method"] = detection_method
                         overlay_depth_status = state["depth_status"]
+                        overlay_offset_velocity = state.get("track_offset_velocity", 0.0)
+                        overlay_vertical_velocity = state.get("track_vertical_velocity", 0.0)
+                        overlay_prediction_conf = state.get("prediction_confidence", 0.0)
                     else:
                         time_since_seen = current_time - state.get("last_detection_time", 0.0)
                         if state.get("last_known_method") is not None and time_since_seen <= TRACK_HOLD_SEC:
@@ -677,7 +1068,11 @@ def cv_processing_thread():
                             state["target_bbox"] = None
                             state["target_area"] = state.get("last_known_area", 0.0)
                             state["target_center_offset"] = state.get("last_known_offset", 0.0)
+                            state["prediction_confidence"] = state.get("prediction_confidence", 0.0) * PREDICTION_STALE_DECAY
                             overlay_depth_status = state.get("depth_status", "Depth idle")
+                            overlay_offset_velocity = state.get("track_offset_velocity", 0.0)
+                            overlay_vertical_velocity = state.get("track_vertical_velocity", 0.0)
+                            overlay_prediction_conf = state.get("prediction_confidence", 0.0)
                         else:
                             state["target_detected"] = False
                             state["target_stale"] = False
@@ -688,6 +1083,16 @@ def cv_processing_thread():
                             state["target_depth"] = None
                             state["target_depth_confidence"] = 0.0
                             state["depth_inference_ms"] = 0.0
+                            state["track_prev_measurement_time"] = 0.0
+                            state["track_prev_center_offset"] = 0.0
+                            state["track_prev_center_y"] = 0.0
+                            state["track_prev_area"] = 0.0
+                            state["track_offset_velocity"] = 0.0
+                            state["track_vertical_velocity"] = 0.0
+                            state["track_area_velocity"] = 0.0
+                            state["predicted_offset"] = 0.0
+                            state["predicted_area"] = 0.0
+                            state["prediction_confidence"] = 0.0
                             if depth_estimator is not None and not depth_estimator.available:
                                 state["depth_status"] = f"Depth unavailable: {depth_estimator.error}"
                             elif depth_estimator is not None:
@@ -705,9 +1110,8 @@ def cv_processing_thread():
                         det_thickness = 2
 
                         if (
-                            detection_method == "YOLO"
-                            and best_box is not None
-                            and det_box == best_box
+                            yolo_target is not None
+                            and det_box == yolo_target["bbox"]
                             and det_cls_id == YOLO_CLASS_LEADER
                         ):
                             det_label += " [target]"
@@ -722,15 +1126,36 @@ def cv_processing_thread():
                             thickness=det_thickness,
                         )
 
-                    if best_box is not None:
-                        if detection_method == "WAKE":
-                            draw_labeled_box(
+                    if wake_target is not None:
+                        draw_labeled_box(
+                            display_frame,
+                            wake_target["bbox"],
+                            f"WAKE Area: {wake_target['area']:.0f}",
+                            (0, 255, 255),
+                            center=wake_target["center"] if detection_method == "WAKE" else None,
+                            thickness=2,
+                        )
+
+                    if best_box is not None and center_point is not None:
+                        cv2.circle(display_frame, center_point, 6, (255, 255, 0), -1)
+                        if detection_method == "FUSED":
+                            fusion_label = f"FUSED wake={fusion_wake_weight:.2f}"
+                            cv2.putText(
                                 display_frame,
-                                best_box,
-                                f"WAKE Area: {best_area:.0f}",
-                                (0, 255, 255),
-                                center=center_point,
+                                fusion_label,
+                                (16, 76),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.55,
+                                (255, 255, 0),
+                                2,
                             )
+                        draw_prediction_arrow(
+                            display_frame,
+                            center_point,
+                            overlay_offset_velocity,
+                            overlay_vertical_velocity,
+                            overlay_prediction_conf,
+                        )
                     else:
                         time_since_seen = current_time - prev_state.get("last_detection_time", 0.0)
                         if prev_state.get("last_known_method") is not None and time_since_seen <= TRACK_HOLD_SEC:
@@ -790,6 +1215,16 @@ def cv_processing_thread():
                             (80, 220, 255),
                             1,
                         )
+                        if detection_method is not None:
+                            cv2.putText(
+                                display_frame,
+                                f"Track: {detection_method}",
+                                (text_x, 68),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.45,
+                                (255, 255, 0),
+                                1,
+                            )
 
                     with frame_lock:
                         display_frames[side] = display_frame
@@ -833,6 +1268,10 @@ def process_boat_vision_based(sock, tx_port, side):
     lost_search_dir = vision_state.get("lost_search_dir", 1.0)
     leader_motion_since = vision_state.get("leader_motion_since", 0.0)
     movement_started = vision_state.get("movement_started", False)
+    predicted_offset = vision_state.get("predicted_offset", offset_x)
+    predicted_area = vision_state.get("predicted_area", area)
+    prediction_confidence = vision_state.get("prediction_confidence", 0.0)
+    track_area_velocity = vision_state.get("track_area_velocity", 0.0)
     leader_speed = state.get("leader_speed", 0.0)
     own_speed = state.get("speed", 0.0)
 
@@ -890,6 +1329,7 @@ def process_boat_vision_based(sock, tx_port, side):
 
     throttle = 1.0
     steer = 0.0
+    throttle_ceiling = FOLLOW_MAX_THROTTLE
 
     # Hold the followers at their spawn positions until the leader has
     # clearly started moving once. This prevents the startup "search drift"
@@ -927,6 +1367,8 @@ def process_boat_vision_based(sock, tx_port, side):
                 "depth": depth,
                 "depth_status": depth_status,
                 "offset": offset_x if is_detected else 0.0,
+                "pred_offset": predicted_offset if is_detected else 0.0,
+                "pred_conf": prediction_confidence if is_detected else 0.0,
                 "speed_knots": speed_mps * 1.94384,
             }
 
@@ -934,6 +1376,8 @@ def process_boat_vision_based(sock, tx_port, side):
 
     # Leader 幾乎停止時，切到「編隊定點保持」優先，
     # 避免視覺面積/置中控制持續推進造成繞圈。
+    steer_gain, throttle_gain = get_tracking_gains(method, is_stale)
+
     if leader_is_stopped and formation_ready and has_pose:
         steer = clamp(
             formation_steer_bias * FORMATION_STOP_STEER_SCALE,
@@ -953,13 +1397,30 @@ def process_boat_vision_based(sock, tx_port, side):
                 throttle = min(throttle, FORMATION_STOP_MAX_THROTTLE)
 
     elif is_detected:
-        if method == "YOLO":
+        if method in ("YOLO", "FUSED"):
             target_opt, target_min, target_max = YOLO_AREA_OPT, YOLO_AREA_MIN, YOLO_AREA_MAX
         else:
             target_opt, target_min, target_max = WAKE_AREA_OPT, WAKE_AREA_MIN, WAKE_AREA_MAX
 
-        if abs(offset_x) > STEER_DEADZONE_H:
-            steer = clamp(offset_x * KV_STEER, -1.0, 1.0)
+        prediction_control_weight = clamp(
+            (prediction_confidence - PREDICTION_CONTROL_MIN_CONF) / max(1e-5, (1.0 - PREDICTION_CONTROL_MIN_CONF)),
+            0.0,
+            1.0,
+        )
+
+        effective_offset = blend_value(
+            offset_x,
+            predicted_offset,
+            clamp(prediction_control_weight * PREDICTION_OFFSET_BLEND, 0.0, 1.0),
+        )
+        effective_area = blend_value(
+            area,
+            predicted_area,
+            clamp(prediction_control_weight * PREDICTION_AREA_BLEND, 0.0, 1.0),
+        )
+
+        if abs(effective_offset) > STEER_DEADZONE_H:
+            steer = clamp(effective_offset * KV_STEER * steer_gain, -1.0, 1.0)
         else:
             steer = 0.0
 
@@ -970,16 +1431,31 @@ def process_boat_vision_based(sock, tx_port, side):
             with vision_lock:
                 vision_states[side]["lost_search_dir"] = 1.0 if steer > 0 else -1.0
 
-        error_area = target_opt - area
-        if area > target_max:
+        error_area = target_opt - effective_area
+        if effective_area > target_max:
             throttle = 0.0
-        elif area < target_min:
-            throttle = FOLLOW_MAX_THROTTLE
+        elif effective_area < target_min:
+            throttle = FOLLOW_MAX_THROTTLE * throttle_gain
         else:
-            throttle = FOLLOW_BASE_THROTTLE + (error_area * KV_THROTTLE_P)
+            throttle = (FOLLOW_BASE_THROTTLE + (error_area * KV_THROTTLE_P)) * throttle_gain
+
+        far_boost = compute_visual_far_boost(
+            area=area,
+            predicted_area=effective_area,
+            area_velocity=track_area_velocity,
+            target_opt=target_opt,
+            method=method,
+        )
+        if far_boost > 0.0 and not leader_is_stopped:
+            throttle += far_boost
+            throttle_ceiling = FOLLOW_FAR_MAX_THROTTLE
 
         if formation_ready:
             throttle += formation_throttle_bias
+
+        if method == "WAKE":
+            # Wake 只拿來做跟蹤方向的補強，不要比 bbox 還激進。
+            throttle = min(throttle, FOLLOW_BASE_THROTTLE + FORMATION_MAX_THROTTLE_BIAS)
 
         if abs(steer) > 0.4:
             throttle *= 0.5
@@ -1065,7 +1541,7 @@ def process_boat_vision_based(sock, tx_port, side):
                 throttle *= DEPTH_NOISY_DAMP_THROTTLE
                 steer *= DEPTH_NOISY_DAMP_STEER
 
-    throttle = clamp(throttle, 0.0, FOLLOW_MAX_THROTTLE)
+    throttle = clamp(throttle, 0.0, throttle_ceiling)
     steer = clamp(steer, -1.0, 1.0)
 
     msg = json.dumps({"throttle": throttle, "steer": steer})
@@ -1083,6 +1559,8 @@ def process_boat_vision_based(sock, tx_port, side):
         "depth_conf": depth_conf,
         "depth_status": depth_status,
         "offset": offset_x if is_detected else 0.0,
+        "pred_offset": predicted_offset if is_detected else 0.0,
+        "pred_conf": prediction_confidence if is_detected else 0.0,
         "formation_error_lat": error_lat,
         "formation_error_long": error_long,
         "speed_knots": speed_mps * 1.94384,
@@ -1178,6 +1656,7 @@ def main():
                     print_parts.append(
                         f"[L-{method_left}] {symbol_left} 舵:{res_left['steer']:5.2f} "
                         f"油:{res_left['throttle']:4.2f} S:{res_left['area']:>5.0f} "
+                        f"P:{res_left['pred_offset']:>5.2f} "
                         f"D:{format_depth_value(res_left['depth'])}"
                     )
 
@@ -1187,6 +1666,7 @@ def main():
                     print_parts.append(
                         f"[R-{method_right}] {symbol_right} 舵:{res_right['steer']:5.2f} "
                         f"油:{res_right['throttle']:4.2f} S:{res_right['area']:>5.0f} "
+                        f"P:{res_right['pred_offset']:>5.2f} "
                         f"D:{format_depth_value(res_right['depth'])}"
                     )
 

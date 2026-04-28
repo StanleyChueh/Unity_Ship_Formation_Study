@@ -2,22 +2,54 @@ using UnityEngine;
 
 public class SimpleMove : MonoBehaviour
 {
+    public enum ControlMode
+    {
+        Keyboard = 0,
+        Trajectory = 1,
+    }
+
+    public enum TrajectoryMode
+    {
+        Straight = 0,
+        Circle = 1,
+        Triangle = 2,
+        Rectangle = 3,
+    }
+
+    [Header("控制模式")]
+    public ControlMode controlMode = ControlMode.Keyboard;
+
     [Header("馬力設定")]
     public float moveForce = 50000.0f;   // 前後推力 (W/S)
     public float turnTorque = 20000.0f;  // 左右轉向力 (A/D) -> 改回這個！
 
+    [Header("自動軌跡測試")]
+    public TrajectoryMode trajectoryMode = TrajectoryMode.Circle;
+    public float trajectorySpeed = 7.0f;
+    public float straightLeadInDistance = 25.0f;
+    public float circleRadius = 18.0f;
+    public float triangleSideLength = 30.0f;
+    public Vector2 rectangleSize = new Vector2(36.0f, 22.0f);
+    public bool loopTrajectory = true;
+
     [Header("尾流特效控制")]
     public ParticleSystem wakeParticle;
-    public float maxEmissionRate = 20f; 
+    public float maxEmissionRate = 20f;
     public float minSpeedToSpawn = 0.5f;
 
     private Rigidbody rb;
     private ParticleSystem.EmissionModule wakeEmission;
+    private Vector3 spawnPosition;
+    private Quaternion spawnRotation;
+    private Vector3 spawnForwardPlanar;
+    private Vector3 spawnRightPlanar;
+    private float travelledDistance = 0.0f;
 
     void Start()
     {
         rb = GetComponent<Rigidbody>();
-        
+        CacheSpawnFrame();
+
         if (wakeParticle != null)
         {
             wakeEmission = wakeParticle.emission;
@@ -25,31 +57,260 @@ public class SimpleMove : MonoBehaviour
         }
     }
 
+    void OnEnable()
+    {
+        travelledDistance = 0.0f;
+    }
+
     void FixedUpdate()
     {
         if (rb == null) return;
 
-        // --- 讀取鍵盤 ---
+        if (controlMode == ControlMode.Trajectory)
+        {
+            RunTrajectoryControl();
+        }
+        else
+        {
+            RunKeyboardControl();
+        }
+
+        UpdateWakeEffect();
+    }
+
+    void CacheSpawnFrame()
+    {
+        spawnPosition = transform.position;
+        spawnRotation = transform.rotation;
+
+        spawnForwardPlanar = transform.TransformDirection(Vector3.up);
+        spawnForwardPlanar.y = 0f;
+
+        if (spawnForwardPlanar.sqrMagnitude < 1e-4f)
+        {
+            spawnForwardPlanar = transform.forward;
+            spawnForwardPlanar.y = 0f;
+        }
+
+        if (spawnForwardPlanar.sqrMagnitude < 1e-4f)
+        {
+            spawnForwardPlanar = Vector3.forward;
+        }
+
+        spawnForwardPlanar.Normalize();
+        spawnRightPlanar = Vector3.Cross(Vector3.up, spawnForwardPlanar).normalized;
+    }
+
+    void RunKeyboardControl()
+    {
         float move = Input.GetAxis("Vertical");   // W/S
         float turn = Input.GetAxis("Horizontal"); // A/D
 
-        // --- 1. 前後移動 (W/S) ---
-        // 因為你的船轉了 -90 度，Y軸 (綠色) 才是前方
-        if (move != 0) 
+        if (move != 0)
         {
             rb.AddRelativeForce(Vector3.up * move * moveForce);
         }
 
-        // --- 2. 左右轉彎 (A/D) ---
-        // 改回使用 Torque (扭力) 來旋轉
-        // 因為你的船轉了 -90 度，Z軸 (藍色) 變成了天頂方向
-        // 所以我們要繞著 Z 軸轉，船才會左右轉頭
-        if (turn != 0) 
+        if (turn != 0)
         {
             rb.AddRelativeTorque(Vector3.forward * turn * turnTorque);
         }
+    }
 
-        // --- 3. 尾流自動控制 ---
+    void RunTrajectoryControl()
+    {
+        travelledDistance += Mathf.Max(0f, trajectorySpeed) * Time.fixedDeltaTime;
+
+        Vector2 localPoint;
+        Vector2 localTangent;
+        EvaluateTrajectory(travelledDistance, out localPoint, out localTangent);
+
+        Vector3 planarPosition = spawnPosition
+            + (spawnRightPlanar * localPoint.x)
+            + (spawnForwardPlanar * localPoint.y);
+
+        Vector3 desiredPosition = rb.position;
+        desiredPosition.x = planarPosition.x;
+        desiredPosition.z = planarPosition.z;
+        rb.MovePosition(desiredPosition);
+
+        Vector3 desiredPlanarForward = (spawnRightPlanar * localTangent.x) + (spawnForwardPlanar * localTangent.y);
+        desiredPlanarForward.y = 0f;
+        if (desiredPlanarForward.sqrMagnitude > 1e-4f)
+        {
+            desiredPlanarForward.Normalize();
+            Quaternion yawDelta = Quaternion.FromToRotation(spawnForwardPlanar, desiredPlanarForward);
+            rb.MoveRotation(yawDelta * spawnRotation);
+
+            Vector3 planarVelocity = desiredPlanarForward * Mathf.Max(0f, trajectorySpeed);
+            rb.velocity = new Vector3(planarVelocity.x, rb.velocity.y, planarVelocity.z);
+        }
+        else
+        {
+            rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
+        }
+
+        rb.angularVelocity = Vector3.zero;
+    }
+
+    void EvaluateTrajectory(float distance, out Vector2 point, out Vector2 tangent)
+    {
+        float leadDistance = Mathf.Max(0f, straightLeadInDistance);
+
+        if (trajectoryMode == TrajectoryMode.Straight || distance <= leadDistance)
+        {
+            point = new Vector2(0f, distance);
+            tangent = Vector2.up;
+            return;
+        }
+
+        float shapeDistance = distance - leadDistance;
+        Vector2 leadOffset = new Vector2(0f, leadDistance);
+
+        switch (trajectoryMode)
+        {
+            case TrajectoryMode.Circle:
+                EvaluateCircle(shapeDistance, leadOffset, out point, out tangent);
+                break;
+            case TrajectoryMode.Triangle:
+                EvaluatePolygon(
+                    shapeDistance,
+                    leadOffset,
+                    BuildTrianglePoints(),
+                    out point,
+                    out tangent
+                );
+                break;
+            case TrajectoryMode.Rectangle:
+                EvaluatePolygon(
+                    shapeDistance,
+                    leadOffset,
+                    BuildRectanglePoints(),
+                    out point,
+                    out tangent
+                );
+                break;
+            default:
+                point = new Vector2(0f, distance);
+                tangent = Vector2.up;
+                break;
+        }
+    }
+
+    void EvaluateCircle(float shapeDistance, Vector2 leadOffset, out Vector2 point, out Vector2 tangent)
+    {
+        float radius = Mathf.Max(0.1f, circleRadius);
+        float circumference = 2.0f * Mathf.PI * radius;
+        float wrappedDistance = WrapDistance(shapeDistance, circumference);
+        float angle = wrappedDistance / radius;
+
+        Vector2 loopPoint = new Vector2(
+            radius * (1.0f - Mathf.Cos(angle)),
+            radius * Mathf.Sin(angle)
+        );
+        Vector2 loopTangent = new Vector2(Mathf.Sin(angle), Mathf.Cos(angle)).normalized;
+
+        point = leadOffset + loopPoint;
+        tangent = loopTangent;
+    }
+
+    void EvaluatePolygon(float shapeDistance, Vector2 leadOffset, Vector2[] points, out Vector2 point, out Vector2 tangent)
+    {
+        if (points == null || points.Length < 2)
+        {
+            point = leadOffset;
+            tangent = Vector2.up;
+            return;
+        }
+
+        float perimeter = 0f;
+        for (int i = 0; i < points.Length - 1; i++)
+        {
+            perimeter += Vector2.Distance(points[i], points[i + 1]);
+        }
+
+        if (perimeter <= 1e-4f)
+        {
+            point = leadOffset + points[0];
+            tangent = Vector2.up;
+            return;
+        }
+
+        float remaining = WrapDistance(shapeDistance, perimeter);
+        tangent = (points[1] - points[0]).normalized;
+
+        for (int i = 0; i < points.Length - 1; i++)
+        {
+            Vector2 a = points[i];
+            Vector2 b = points[i + 1];
+            Vector2 segment = b - a;
+            float length = segment.magnitude;
+            if (length <= 1e-4f)
+            {
+                continue;
+            }
+
+            if (remaining <= length || i == points.Length - 2)
+            {
+                float t = Mathf.Clamp01(remaining / length);
+                point = leadOffset + Vector2.Lerp(a, b, t);
+                tangent = segment / length;
+                return;
+            }
+
+            remaining -= length;
+        }
+
+        point = leadOffset + points[points.Length - 1];
+    }
+
+    Vector2[] BuildTrianglePoints()
+    {
+        float side = Mathf.Max(1f, triangleSideLength);
+        float halfSide = side * 0.5f;
+        float triangleWidth = Mathf.Sqrt(3f) * halfSide;
+
+        return new Vector2[]
+        {
+            new Vector2(0f, 0f),
+            new Vector2(0f, side),
+            new Vector2(triangleWidth, halfSide),
+            new Vector2(0f, 0f),
+        };
+    }
+
+    Vector2[] BuildRectanglePoints()
+    {
+        float width = Mathf.Max(1f, rectangleSize.x);
+        float height = Mathf.Max(1f, rectangleSize.y);
+
+        return new Vector2[]
+        {
+            new Vector2(0f, 0f),
+            new Vector2(0f, height),
+            new Vector2(width, height),
+            new Vector2(width, 0f),
+            new Vector2(0f, 0f),
+        };
+    }
+
+    float WrapDistance(float distance, float length)
+    {
+        if (length <= 1e-4f)
+        {
+            return 0f;
+        }
+
+        if (!loopTrajectory)
+        {
+            return Mathf.Clamp(distance, 0f, length);
+        }
+
+        return Mathf.Repeat(distance, length);
+    }
+
+    void UpdateWakeEffect()
+    {
         if (wakeParticle != null)
         {
             float currentSpeed = rb.velocity.magnitude;

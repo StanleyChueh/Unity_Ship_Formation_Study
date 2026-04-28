@@ -68,6 +68,7 @@
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_trigger.cs" />
     <Compile Include="Assets/IgniteCoders/Simple Water Shader/Info/Scripts/Readme.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/GUI/guiFPS.cs" />
+    <Compile Include="Assets/FollowerCameraLookAt.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_ControllerMaster.cs" />
     <Compile Include="Assets/SimpleCameraFollow.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/ui_suimonoHandler.cs" />
