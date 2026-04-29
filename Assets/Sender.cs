@@ -29,7 +29,7 @@ public class MainCameraStreamSender : MonoBehaviour
     public int captureHeight = 720;
 
     [Range(30, 100)]
-    public int jpgQuality = 70;
+    public int jpgQuality = 70; //70
 
     [Header("除錯")]
     public bool autoReconnect = true;

@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import struct
 import threading
@@ -82,8 +83,9 @@ SIDE_STREAM_BY_BOAT = {"Left": "LeftSide", "Right": "RightSide"}
 
 SHOW_WINDOW = True
 SHOW_OVERLAY_TEXT = True
+DISPLAY_UPDATE_INTERVAL_SEC = 0.12
 YOLO_MODEL_PATH = "../best.pt"
-USE_DEPTH_ANYTHING_TEST = True
+USE_DEPTH_ANYTHING_TEST = False
 DEPTH_ANYTHING_MODEL_ID = "LiheYoung/depth-anything-small-hf"
 DEPTH_ANYTHING_DEVICE = "cuda"
 DEPTH_OVERLAY_SCALE = 0.30
@@ -100,6 +102,11 @@ YOLO_CONFIDENCE = 0.12
 YOLO_MIN_BOX_AREA = 300
 YOLO_DEVICE = "cuda:0"
 YOLO_USE_BATCHING = True
+YOLO_IMGSZ = 640
+YOLO_BATCH_WAIT_SEC = 0.008
+YOLO_ENABLE_WARMUP = True
+YOLO_ENABLE_TORCH_COMPILE = False
+VISION_CPU_THREADS = max(1, min(8, (os.cpu_count() or 4)))
 IGNORE_TOP_RATIO = 0.25
 IGNORE_BOTTOM_RATIO = 0.18
 
@@ -152,7 +159,7 @@ PREDICTION_CONTROL_MIN_CONF = 0.32
 # =========================================================
 # 2.1) 深度融合控制 (提升純視覺穩定性)
 # =========================================================
-USE_DEPTH_FUSION_CONTROL = True
+USE_DEPTH_FUSION_CONTROL = False
 DEPTH_STD_MAX_RELIABLE = 0.14
 DEPTH_NEAR_BRAKE_START = 0.62
 DEPTH_NEAR_BRAKE_MIN_SCALE = 0.10
@@ -655,8 +662,24 @@ def configure_yolo_runtime(model):
     using_cuda = False
     half_enabled = False
 
+    try:
+        cv2.setUseOptimized(True)
+        cv2.setNumThreads(VISION_CPU_THREADS)
+    except Exception:
+        pass
+
     if torch is None:
         return using_cuda, half_enabled
+
+    try:
+        torch.set_num_threads(VISION_CPU_THREADS)
+    except Exception:
+        pass
+
+    try:
+        torch.set_num_interop_threads(max(1, min(4, VISION_CPU_THREADS // 2)))
+    except Exception:
+        pass
 
     try:
         using_cuda = YOLO_DEVICE.startswith("cuda") and torch.cuda.is_available()
@@ -691,7 +714,26 @@ def configure_yolo_runtime(model):
     except Exception:
         pass
 
+    if YOLO_ENABLE_TORCH_COMPILE:
+        try:
+            model.model = torch.compile(model.model, mode="reduce-overhead", fullgraph=False)
+        except Exception:
+            pass
+
     return True, True
+
+
+def warmup_yolo_runtime(model, predict_kwargs):
+    if not YOLO_ENABLE_WARMUP:
+        return
+
+    warmup_frame = np.zeros((YOLO_IMGSZ, YOLO_IMGSZ, 3), dtype=np.uint8)
+    warmup_batch = [warmup_frame for _ in range(max(1, len(CAMERA_STREAMS)))]
+
+    try:
+        model.predict(warmup_batch, **predict_kwargs)
+    except Exception as exc:
+        print(f"[Vision] YOLO warmup skipped: {exc}")
 
 
 def get_model_class_name(model, cls_id):
@@ -957,6 +999,18 @@ def cv_processing_thread():
     else:
         print("[Vision] YOLO runtime on CPU/default device.")
 
+    yolo_predict_kwargs = {
+        "verbose": False,
+        "conf": YOLO_CONFIDENCE,
+        "classes": YOLO_CLASSES,
+        "imgsz": YOLO_IMGSZ,
+    }
+    if yolo_uses_cuda:
+        yolo_predict_kwargs["device"] = YOLO_DEVICE
+        yolo_predict_kwargs["half"] = yolo_half_enabled
+
+    warmup_yolo_runtime(model, yolo_predict_kwargs)
+
     depth_estimator = None
     if USE_DEPTH_ANYTHING_TEST:
         depth_estimator = DepthAnythingEstimator(
@@ -969,6 +1023,7 @@ def cv_processing_thread():
             print(f"[Vision] Depth Anything disabled: {depth_estimator.error}")
 
     times_dict = {stream_name: time.time() for stream_name in CAMERA_STREAMS}
+    display_times = {stream_name: 0.0 for stream_name in CAMERA_STREAMS}
     depth_cache = {
         "Left": {"result": None, "preview": None, "updated_at": 0.0},
         "Right": {"result": None, "preview": None, "updated_at": 0.0},
@@ -988,16 +1043,20 @@ def cv_processing_thread():
                 if frame is None:
                     continue
 
-                frame = frame.copy()
+                current_time = time.time()
                 height, width = frame.shape[:2]
-                display_frame = frame.copy() if SHOW_WINDOW else None
+                display_due = (
+                    SHOW_WINDOW
+                    and (current_time - display_times[stream_name]) >= DISPLAY_UPDATE_INTERVAL_SEC
+                )
+                display_frame = frame.copy() if display_due else None
 
                 with vision_lock:
                     prev_state = vision_states[stream_name].copy()
 
                 preferred_offset = prev_state.get("last_known_offset", 0.0)
                 last_detection_time = prev_state.get("last_detection_time", 0.0)
-                has_recent_track = (time.time() - last_detection_time) <= (TRACK_HOLD_SEC + 0.8)
+                has_recent_track = (current_time - last_detection_time) <= (TRACK_HOLD_SEC + 0.8)
 
                 pending_streams.append(
                     {
@@ -1009,6 +1068,7 @@ def cv_processing_thread():
                         "height": height,
                         "width": width,
                         "display_frame": display_frame,
+                        "display_due": display_due,
                         "prev_state": prev_state,
                         "preferred_offset": preferred_offset,
                         "has_recent_track": has_recent_track,
@@ -1019,21 +1079,59 @@ def cv_processing_thread():
                 time.sleep(0.005)
                 continue
 
+            if YOLO_USE_BATCHING and len(pending_streams) < len(CAMERA_STREAMS):
+                time.sleep(YOLO_BATCH_WAIT_SEC)
+                queued_streams = {item["stream_name"] for item in pending_streams}
+                for stream_name, config in CAMERA_STREAMS.items():
+                    if stream_name in queued_streams:
+                        continue
+
+                    with frame_lock:
+                        frame = latest_frames[stream_name]
+                        latest_frames[stream_name] = None
+
+                    if frame is None:
+                        continue
+
+                    current_time = time.time()
+                    height, width = frame.shape[:2]
+                    display_due = (
+                        SHOW_WINDOW
+                        and (current_time - display_times[stream_name]) >= DISPLAY_UPDATE_INTERVAL_SEC
+                    )
+                    display_frame = frame.copy() if display_due else None
+
+                    with vision_lock:
+                        prev_state = vision_states[stream_name].copy()
+
+                    preferred_offset = prev_state.get("last_known_offset", 0.0)
+                    last_detection_time = prev_state.get("last_detection_time", 0.0)
+                    has_recent_track = (current_time - last_detection_time) <= (TRACK_HOLD_SEC + 0.8)
+
+                    pending_streams.append(
+                        {
+                            "stream_name": stream_name,
+                            "config": config,
+                            "boat_side": config["boat"],
+                            "role": config["role"],
+                            "frame": frame,
+                            "height": height,
+                            "width": width,
+                            "display_frame": display_frame,
+                            "display_due": display_due,
+                            "prev_state": prev_state,
+                            "preferred_offset": preferred_offset,
+                            "has_recent_track": has_recent_track,
+                        }
+                    )
+
             inference_inputs = [item["frame"] for item in pending_streams]
-            predict_kwargs = {
-                "verbose": False,
-                "conf": YOLO_CONFIDENCE,
-                "classes": YOLO_CLASSES,
-            }
-            if yolo_uses_cuda:
-                predict_kwargs["device"] = YOLO_DEVICE
-                predict_kwargs["half"] = yolo_half_enabled
 
             if YOLO_USE_BATCHING:
-                batch_results = model.predict(inference_inputs, **predict_kwargs)
+                batch_results = model.predict(inference_inputs, **yolo_predict_kwargs)
             else:
                 batch_results = [
-                    model.predict(frame, **predict_kwargs)[0]
+                    model.predict(frame, **yolo_predict_kwargs)[0]
                     for frame in inference_inputs
                 ]
 
@@ -1046,6 +1144,7 @@ def cv_processing_thread():
                 height = item["height"]
                 width = item["width"]
                 display_frame = item["display_frame"]
+                display_due = item["display_due"]
                 prev_state = item["prev_state"]
                 preferred_offset = item["preferred_offset"]
                 has_recent_track = item["has_recent_track"]
@@ -1330,7 +1429,7 @@ def cv_processing_thread():
                                 state["depth_status"] = "Depth disabled"
                             overlay_depth_status = state["depth_status"]
 
-                if SHOW_WINDOW and display_frame is not None:
+                if SHOW_WINDOW and display_due and display_frame is not None:
                     for detection in yolo_display_detections:
                         det_box = detection["bbox"]
                         det_cls_id = detection["cls_id"]
@@ -1465,6 +1564,7 @@ def cv_processing_thread():
 
                     with frame_lock:
                         display_frames[stream_name] = display_frame
+                    display_times[stream_name] = current_time
 
     except Exception as exc:
         print(f"[Vision] Error: {exc}")

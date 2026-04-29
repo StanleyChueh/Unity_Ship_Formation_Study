@@ -520,7 +520,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   serverIP: 127.0.0.1
   serverPort: 10001
-  sendFPS: 60
+  sendFPS: 20
   resizeScale: 1
   useFixedCaptureResolution: 1
   captureWidth: 1280
@@ -1159,7 +1159,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   serverIP: 127.0.0.1
   serverPort: 9998
-  sendFPS: 60
+  sendFPS: 20
   resizeScale: 1
   useFixedCaptureResolution: 1
   captureWidth: 1280
@@ -3465,7 +3465,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   serverIP: 127.0.0.1
   serverPort: 10000
-  sendFPS: 60
+  sendFPS: 20
   resizeScale: 1
   useFixedCaptureResolution: 1
   captureWidth: 1280
@@ -5226,7 +5226,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   serverIP: 127.0.0.1
   serverPort: 9999
-  sendFPS: 60
+  sendFPS: 20
   resizeScale: 1
   useFixedCaptureResolution: 1
   captureWidth: 1280

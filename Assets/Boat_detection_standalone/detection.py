@@ -1,3 +1,6 @@
+'''
+	Usage:streamlit run detection.py
+'''
 import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
