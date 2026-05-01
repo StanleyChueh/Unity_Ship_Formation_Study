@@ -136,13 +136,11 @@ STALE_TARGET_THROTTLE_SCALE = 0.65
 STALE_TARGET_STEER_SCALE = 0.85
 SEARCH_FORWARD_THROTTLE = 0.24
 SEARCH_STEER_GAIN = 0.85
-LEADER_START_SPEED_MPS = 0.35
-LEADER_START_CONFIRM_SEC = 0.75
 DISABLE_SEARCH_MODE = True
 VISUAL_FAR_BOOST_MAX = 0.16
 VISUAL_SHRINK_BOOST_MAX = 0.08
 VISUAL_FAR_BOOST_EXPONENT = 1.35
-FOLLOW_FAR_MAX_THROTTLE = 0.68
+FOLLOW_FAR_MAX_THROTTLE = 0.9 #0.82
 PREDICTION_HORIZON_SEC = 0.40
 PREDICTION_OFFSET_BLEND = 0.55
 PREDICTION_AREA_BLEND = 0.35
@@ -156,46 +154,12 @@ PREDICTION_MIN_VERTICAL_STEP = 0.010
 PREDICTION_MIN_AREA_RATIO_STEP = 0.045
 PREDICTION_CONTROL_MIN_CONF = 0.32
 
-# =========================================================
-# 2.1) 深度融合控制 (提升純視覺穩定性)
-# =========================================================
-USE_DEPTH_FUSION_CONTROL = False
-DEPTH_STD_MAX_RELIABLE = 0.14
-DEPTH_NEAR_BRAKE_START = 0.62
-DEPTH_NEAR_BRAKE_MIN_SCALE = 0.10
-DEPTH_FAR_BOOST_END = 0.35
-DEPTH_FAR_BOOST = 0.06
-DEPTH_NOISY_DAMP_STEER = 0.75
-DEPTH_NOISY_DAMP_THROTTLE = 0.70
-
-# =========================================================
-# 3.1) 編隊維持與失追補償參數
-# =========================================================
-FORMATION_TRIANGLE_SIDE_LENGTH_M = 2.40
-FORMATION_TRIANGLE_HALF_BASE_M = FORMATION_TRIANGLE_SIDE_LENGTH_M * 0.5
-FORMATION_TRIANGLE_REAR_DISTANCE_M = FORMATION_TRIANGLE_SIDE_LENGTH_M * math.sqrt(3.0) * 0.5
-FORMATION_STEER_KP = 0.08
-FORMATION_LONG_KP = 0.05
-FORMATION_SPEED_KP = 0.12
-FORMATION_MOTION_STEER_KP = 0.15
-FORMATION_MOTION_LONG_KP = 0.09
-FORMATION_MOTION_BLEND = 0.65
-FORMATION_MAX_STEER_BIAS = 0.35
-FORMATION_MAX_THROTTLE_BIAS = 0.22
-FORMATION_HOLD_THROTTLE_BASE = 0.12
-FORMATION_CLOSE_ENOUGH_M = 0.80
-FORMATION_HEADING_KP = 0.012
-FORMATION_MAX_HEADING_BIAS = 0.24
 SIDE_TRACK_STEER_KP = 0.95
 SIDE_TRACK_MAX_STEER_BIAS = 0.22
-SIDE_TRACK_MAX_THROTTLE_BIAS = 0.10
+SIDE_TRACK_MAX_THROTTLE_BIAS = 0.14
 SIDE_TRACK_AREA_GAIN = 0.18
 SIDE_STEER_DEADZONE_H = 0.03
 SIDE_STALE_BIAS_SCALE = 0.72
-LEADER_STOP_SPEED_MPS = 0.20
-FORMATION_STOP_STEER_SCALE = 1.6
-FORMATION_STOP_MAX_STEER = 0.45
-FORMATION_STOP_MAX_THROTTLE = 0.22
 YOLO_TRACK_STEER_GAIN = 1.06
 YOLO_TRACK_THROTTLE_GAIN = 1.08
 WAKE_TRACK_STEER_GAIN = 0.90
@@ -217,6 +181,15 @@ VISION_FRONT_AREA_TOLERANCE_RATIO = 0.10
 VISION_SIDE_AREA_TOLERANCE_RATIO = 0.12
 VISION_FRONT_AREA_GAIN = 0.72
 VISION_FRONT_AREA_MIN_THROTTLE = 0.08
+VISION_FRONT_CRUISE_THROTTLE = 0.18
+VISION_FRONT_CRUISE_STEER_LIMIT = 0.055
+VISION_FRONT_CRUISE_MAX_POSITIVE_RATIO = 0.20
+VISION_FRONT_CRUISE_MAX_NEGATIVE_RATIO = 0.06
+VISION_TURN_CATCHUP_GAIN = 0.16
+VISION_TURN_CATCHUP_MAX = 0.18
+VISION_TURN_SPEED_CEILING = 0.82
+VISION_TURN_SLOWDOWN_START = 0.55
+VISION_TURN_SLOWDOWN_MIN_SCALE = 0.78
 
 # =========================================================
 # 3) 純視覺 PID 控制參數設定
@@ -226,7 +199,7 @@ STEER_DEADZONE_H = 0.035
 SEARCH_MODE_STEER = 0.5
 KV_THROTTLE_P = 0.00018
 FOLLOW_BASE_THROTTLE = 0.40
-FOLLOW_MAX_THROTTLE = 0.52
+FOLLOW_MAX_THROTTLE = 0.62
 
 # YOLO 距離設定
 YOLO_AREA_OPT = 250000
@@ -299,9 +272,6 @@ display_frames = {stream_name: None for stream_name in CAMERA_STREAMS}
 
 formation_targets = {
     "Left": {
-        "initialized": False,
-        "desired_lateral": -FORMATION_TRIANGLE_HALF_BASE_M,
-        "desired_longitudinal": -FORMATION_TRIANGLE_REAR_DISTANCE_M,
         "front_visual_initialized": False,
         "desired_front_offset": 0.0,
         "desired_front_area": 0.0,
@@ -310,41 +280,12 @@ formation_targets = {
         "desired_side_area": 0.0,
     },
     "Right": {
-        "initialized": False,
-        "desired_lateral": FORMATION_TRIANGLE_HALF_BASE_M,
-        "desired_longitudinal": -FORMATION_TRIANGLE_REAR_DISTANCE_M,
         "front_visual_initialized": False,
         "desired_front_offset": 0.0,
         "desired_front_area": 0.0,
         "side_visual_initialized": False,
         "desired_side_offset": 0.0,
         "desired_side_area": 0.0,
-    },
-}
-
-boat_runtime_states = {
-    "Left": {"leader_motion_since": 0.0, "movement_started": False},
-    "Right": {"leader_motion_since": 0.0, "movement_started": False},
-}
-
-depth_fusion_state = {
-    "Left": {
-        "has_prev": False,
-        "last_depth": None,
-        "last_area": None,
-        "min_depth": None,
-        "max_depth": None,
-        "corr_score": 0.0,
-        "near_sign": 1.0,
-    },
-    "Right": {
-        "has_prev": False,
-        "last_depth": None,
-        "last_area": None,
-        "min_depth": None,
-        "max_depth": None,
-        "corr_score": 0.0,
-        "near_sign": 1.0,
     },
 }
 
@@ -426,6 +367,39 @@ def shape_area_error(error_ratio):
 
     shaped = (magnitude - VISION_AREA_ERROR_DEADZONE_RATIO) / max(1e-5, (1.0 - VISION_AREA_ERROR_DEADZONE_RATIO))
     return math.copysign(clamp(shaped, 0.0, 1.0), error_ratio)
+
+
+def compute_centered_cruise_throttle(steer_error, area_error_ratio, predicted_area_ratio, area_velocity_ratio):
+    if abs(steer_error) > VISION_FRONT_CRUISE_STEER_LIMIT:
+        return 0.0
+
+    if area_error_ratio < -VISION_FRONT_CRUISE_MAX_NEGATIVE_RATIO:
+        return 0.0
+
+    if area_error_ratio > VISION_FRONT_CRUISE_MAX_POSITIVE_RATIO:
+        return 0.0
+
+    predicted_gap = max(predicted_area_ratio, 0.0)
+    shrinking = clamp(-area_velocity_ratio, 0.0, 1.0)
+    growing = clamp(area_velocity_ratio, 0.0, 1.0)
+
+    cruise_scale = clamp(0.55 + (predicted_gap * 0.75) + (shrinking * 0.45) - (growing * 0.85), 0.0, 1.0)
+    return VISION_FRONT_CRUISE_THROTTLE * cruise_scale
+
+
+def compute_turn_catchup_boost(steer, front_area_error_ratio, side_area_error_ratio):
+    steer_mag = abs(float(steer))
+    if steer_mag <= STEER_DEADZONE_H:
+        return 0.0
+
+    front_gap = max(float(front_area_error_ratio), 0.0)
+    side_gap = max(float(side_area_error_ratio), 0.0)
+    catchup_need = clamp((front_gap * 0.75) + (side_gap * 0.55), 0.0, 1.0)
+    if catchup_need <= 1e-4:
+        return 0.0
+
+    turn_scale = clamp((steer_mag - 0.18) / 0.55, 0.0, 1.0)
+    return clamp(catchup_need * turn_scale * VISION_TURN_CATCHUP_GAIN, 0.0, VISION_TURN_CATCHUP_MAX)
 
 
 def update_track_prediction(state, center_offset, center_y_norm, area, current_time):
@@ -641,27 +615,6 @@ def draw_prediction_arrow(frame, center_point, offset_velocity, vertical_velocit
     )
 
 
-def world_to_leader_frame(dx, dz, leader_yaw_deg):
-    yaw = math.radians(leader_yaw_deg)
-
-    # Unity world forward(+Z) at yaw=0:
-    # forward = (sin(yaw), cos(yaw)) on XZ plane
-    fwd_x = math.sin(yaw)
-    fwd_z = math.cos(yaw)
-
-    # Right vector on XZ plane
-    right_x = math.cos(yaw)
-    right_z = -math.sin(yaw)
-
-    longitudinal = dx * fwd_x + dz * fwd_z
-    lateral = dx * right_x + dz * right_z
-    return lateral, longitudinal
-
-
-def signed_angle_delta_deg(target_deg, current_deg):
-    return ((target_deg - current_deg + 180.0) % 360.0) - 180.0
-
-
 def lock_visual_reference(boat_side, role, center_offset, area):
     formation_ref = formation_targets[boat_side]
     if role == "front":
@@ -773,12 +726,6 @@ def get_model_class_name(model, cls_id):
     if isinstance(names, (list, tuple)) and 0 <= cls_id < len(names):
         return str(names[cls_id])
     return str(cls_id)
-
-
-def format_depth_value(depth_value):
-    if depth_value is None:
-        return "---"
-    return f"{depth_value:.3f}"
 
 
 def get_yolo_box_color(cls_id):
@@ -1620,20 +1567,14 @@ def process_boat_vision_based(sock, tx_port, side):
     with vision_lock:
         front_state = vision_states[FRONT_STREAM_BY_BOAT[side]].copy()
         side_state = vision_states[SIDE_STREAM_BY_BOAT[side]].copy()
-        boat_runtime = boat_runtime_states[side].copy()
 
     front_detected = front_state["target_detected"]
     front_stale = front_state.get("target_stale", False)
     front_method = front_state["method"]
     front_offset = front_state["target_center_offset"]
     front_area = front_state["target_area"]
-    depth = front_state.get("target_depth")
-    depth_conf = front_state.get("target_depth_confidence", 0.0)
-    depth_status = front_state.get("depth_status", "Depth disabled")
     last_known_offset = front_state.get("last_known_offset", 0.0)
     lost_search_dir = front_state.get("lost_search_dir", 1.0)
-    leader_motion_since = boat_runtime.get("leader_motion_since", 0.0)
-    movement_started = boat_runtime.get("movement_started", False)
     front_predicted_offset = front_state.get("predicted_offset", front_offset)
     front_predicted_area = front_state.get("predicted_area", front_area)
     front_prediction_confidence = front_state.get("prediction_confidence", 0.0)
@@ -1647,7 +1588,6 @@ def process_boat_vision_based(sock, tx_port, side):
     side_predicted_offset = side_state.get("predicted_offset", side_offset)
     side_predicted_area = side_state.get("predicted_area", side_area)
     side_prediction_confidence = side_state.get("prediction_confidence", 0.0)
-    leader_speed = state.get("leader_speed", 0.0)
     formation = formation_targets[side]
     front_visual_ref_ready = formation.get("front_visual_initialized", False)
     desired_front_offset = formation.get("desired_front_offset", 0.0)
@@ -1655,8 +1595,6 @@ def process_boat_vision_based(sock, tx_port, side):
     side_visual_ref_ready = formation.get("side_visual_initialized", False)
     desired_side_offset = formation.get("desired_side_offset", 0.0)
     desired_side_area = formation.get("desired_side_area", 0.0)
-    error_lat = 0.0
-    error_long = 0.0
 
     throttle = 1.0
     steer = 0.0
@@ -1666,54 +1604,6 @@ def process_boat_vision_based(sock, tx_port, side):
     side_effective_offset = side_offset
     side_effective_area = side_area
     side_area_error_ratio = 0.0
-
-    # Hold the followers at their spawn positions until the leader has
-    # clearly started moving once. This prevents the startup "search drift"
-    # that makes them wander away before the mission begins.
-    if not movement_started:
-        now = time.time()
-        if leader_speed >= LEADER_START_SPEED_MPS:
-            if leader_motion_since <= 0.0:
-                with vision_lock:
-                    boat_runtime_states[side]["leader_motion_since"] = now
-            elif (now - leader_motion_since) >= LEADER_START_CONFIRM_SEC:
-                with vision_lock:
-                    boat_runtime_states[side]["movement_started"] = True
-                    boat_runtime_states[side]["leader_motion_since"] = 0.0
-                movement_started = True
-        else:
-            with vision_lock:
-                boat_runtime_states[side]["leader_motion_since"] = 0.0
-
-        if not movement_started:
-            throttle = 0.0
-            steer = 0.0
-
-            msg = json.dumps({"throttle": throttle, "steer": steer})
-            sock.sendto(msg.encode("utf-8"), (UDP_IP, tx_port))
-
-            speed_mps = state.get("speed", 0.0)
-            return {
-                "detected": front_detected,
-                "stale": front_stale,
-                "method": front_method,
-                "side_detected": side_detected,
-                "side_stale": side_stale,
-                "side_method": side_method,
-                "throttle": throttle,
-                "steer": steer,
-                "area": front_area if front_detected else 0.0,
-                "side_area": side_area if side_detected else 0.0,
-                "depth": depth,
-                "depth_status": depth_status,
-                "offset": front_offset if front_detected else 0.0,
-                "side_offset": side_offset if side_detected else 0.0,
-                "pred_offset": front_predicted_offset if front_detected else 0.0,
-                "pred_conf": front_prediction_confidence if front_detected else 0.0,
-                "speed_knots": speed_mps * 1.94384,
-            }
-
-    leader_is_stopped = leader_speed <= LEADER_STOP_SPEED_MPS
     steer_gain, throttle_gain = get_tracking_gains(front_method, front_stale)
 
     if side_detected and side_visual_ref_ready:
@@ -1781,6 +1671,8 @@ def process_boat_vision_based(sock, tx_port, side):
             clamp(prediction_control_weight * PREDICTION_AREA_BLEND, 0.0, 1.0),
         )
         steer_error = effective_offset - desired_front_offset if front_visual_ref_ready else effective_offset
+        predicted_area_ratio = normalize_area_error(target_opt, front_predicted_area)
+        area_velocity_ratio = float(front_track_area_velocity) / max(float(target_opt), 1.0)
 
         if abs(steer_error) > STEER_DEADZONE_H:
             steer = clamp(steer_error * KV_STEER * steer_gain, -1.0, 1.0)
@@ -1816,31 +1708,47 @@ def process_boat_vision_based(sock, tx_port, side):
             target_opt=target_opt,
             method=front_method,
         )
-        if far_boost > 0.0 and not leader_is_stopped:
+        if far_boost > 0.0:
             throttle += far_boost
             throttle_ceiling = FOLLOW_FAR_MAX_THROTTLE
 
+        cruise_throttle = compute_centered_cruise_throttle(
+            steer_error=steer_error,
+            area_error_ratio=front_area_error_ratio,
+            predicted_area_ratio=predicted_area_ratio,
+            area_velocity_ratio=area_velocity_ratio,
+        )
+        throttle = max(throttle, cruise_throttle)
         throttle += side_throttle_bias
+
+        turn_catchup_boost = compute_turn_catchup_boost(
+            steer=steer,
+            front_area_error_ratio=front_area_error_ratio,
+            side_area_error_ratio=side_area_error_ratio,
+        )
+        if turn_catchup_boost > 0.0:
+            throttle += turn_catchup_boost
+            throttle_ceiling = max(throttle_ceiling, VISION_TURN_SPEED_CEILING)
 
         if front_method == "WAKE":
             # Wake 只拿來做跟蹤方向的補強，不要比 bbox 距離控制更激進。
-            throttle = min(throttle, FOLLOW_BASE_THROTTLE * 0.75)
+            throttle = min(throttle, VISION_FRONT_CRUISE_THROTTLE)
 
-        if abs(steer) > 0.4:
-            throttle *= 0.5
+        steer_mag = abs(steer)
+        if steer_mag > VISION_TURN_SLOWDOWN_START:
+            turn_excess = clamp(
+                (steer_mag - VISION_TURN_SLOWDOWN_START) / max(1e-5, (1.0 - VISION_TURN_SLOWDOWN_START)),
+                0.0,
+                1.0,
+            )
+            slowdown_scale = 1.0 - ((1.0 - VISION_TURN_SLOWDOWN_MIN_SCALE) * turn_excess)
+            throttle *= clamp(slowdown_scale, VISION_TURN_SLOWDOWN_MIN_SCALE, 1.0)
 
         if front_stale:
             steer *= STALE_TARGET_STEER_SCALE
             if throttle > 0.0:
                 throttle = max(throttle * STALE_TARGET_THROTTLE_SCALE, SEARCH_FORWARD_THROTTLE)
 
-        if (
-            leader_is_stopped
-            and abs(front_area_error_ratio) <= VISION_AREA_ERROR_DEADZONE_RATIO
-            and abs(steer_error) <= STEER_DEADZONE_H
-            and (not side_visual_ref_ready or abs(side_area_error_ratio) <= VISION_AREA_ERROR_DEADZONE_RATIO)
-        ):
-            throttle = 0.0
     else:
         if DISABLE_SEARCH_MODE:
             throttle = max(0.0, side_throttle_bias)
@@ -1856,58 +1764,6 @@ def process_boat_vision_based(sock, tx_port, side):
                 )
             else:
                 steer = (lost_search_dir * SEARCH_MODE_STEER) + side_steer_bias
-
-    # =====================================================
-    # 深度融合控制 (自動學習 depth 近遠方向)
-    # =====================================================
-    depth_is_reliable = (
-        USE_DEPTH_FUSION_CONTROL
-        and front_detected
-        and (depth is not None)
-        and (depth_conf is not None)
-        and (depth_conf <= DEPTH_STD_MAX_RELIABLE)
-    )
-
-    if USE_DEPTH_FUSION_CONTROL:
-        ds = depth_fusion_state[side]
-
-        if depth_is_reliable:
-            if ds["min_depth"] is None:
-                ds["min_depth"] = float(depth)
-                ds["max_depth"] = float(depth)
-            else:
-                ds["min_depth"] = min(ds["min_depth"], float(depth))
-                ds["max_depth"] = max(ds["max_depth"], float(depth))
-
-            if ds["has_prev"] and ds["last_depth"] is not None and ds["last_area"] is not None:
-                d_depth = float(depth) - float(ds["last_depth"])
-                d_area = float(front_area) - float(ds["last_area"])
-                if abs(d_depth) > 1e-4 and abs(d_area) > 5.0:
-                    ds["corr_score"] += 1.0 if (d_depth * d_area) >= 0.0 else -1.0
-                    ds["corr_score"] = clamp(ds["corr_score"], -30.0, 30.0)
-                    ds["near_sign"] = 1.0 if ds["corr_score"] >= 0.0 else -1.0
-
-            ds["last_depth"] = float(depth)
-            ds["last_area"] = float(front_area)
-            ds["has_prev"] = True
-
-            depth_span = (ds["max_depth"] - ds["min_depth"]) if (ds["max_depth"] is not None and ds["min_depth"] is not None) else 0.0
-            if depth_span > 1e-5:
-                depth_norm = (float(depth) - ds["min_depth"]) / depth_span
-                near_score = depth_norm if ds["near_sign"] > 0.0 else (1.0 - depth_norm)
-
-                if near_score >= DEPTH_NEAR_BRAKE_START:
-                    t = (near_score - DEPTH_NEAR_BRAKE_START) / max(1e-5, (1.0 - DEPTH_NEAR_BRAKE_START))
-                    brake_scale = 1.0 - t * (1.0 - DEPTH_NEAR_BRAKE_MIN_SCALE)
-                    throttle *= clamp(brake_scale, DEPTH_NEAR_BRAKE_MIN_SCALE, 1.0)
-                elif near_score <= DEPTH_FAR_BOOST_END and not leader_is_stopped:
-                    far_gain = (DEPTH_FAR_BOOST_END - near_score) / max(1e-5, DEPTH_FAR_BOOST_END)
-                    throttle += DEPTH_FAR_BOOST * clamp(far_gain, 0.0, 1.0)
-        else:
-            # 深度不穩時，降低激進控制，避免亂轉與過衝。
-            if depth is not None:
-                throttle *= DEPTH_NOISY_DAMP_THROTTLE
-                steer *= DEPTH_NOISY_DAMP_STEER
 
     throttle = clamp(throttle, 0.0, throttle_ceiling)
     steer = clamp(steer, -1.0, 1.0)
@@ -1927,15 +1783,10 @@ def process_boat_vision_based(sock, tx_port, side):
         "steer": steer,
         "area": front_area if front_detected else 0.0,
         "side_area": side_area if side_detected else 0.0,
-        "depth": depth,
-        "depth_conf": depth_conf,
-        "depth_status": depth_status,
         "offset": front_offset if front_detected else 0.0,
         "side_offset": side_effective_offset if side_detected else 0.0,
         "pred_offset": front_predicted_offset if front_detected else 0.0,
         "pred_conf": front_prediction_confidence if front_detected else 0.0,
-        "formation_error_lat": error_lat,
-        "formation_error_long": error_long,
         "side_steer_bias": side_steer_bias,
         "side_throttle_bias": side_throttle_bias,
         "speed_knots": speed_mps * 1.94384,
@@ -2035,8 +1886,7 @@ def main():
                         f"[L-{method_left}] {symbol_left} 舵:{res_left['steer']:5.2f} "
                         f"油:{res_left['throttle']:4.2f} S:{res_left['area']:>5.0f} "
                         f"SL[{side_method_left}]{side_symbol_left}:{res_left['side_offset']:>5.2f} "
-                        f"P:{res_left['pred_offset']:>5.2f} "
-                        f"D:{format_depth_value(res_left['depth'])}"
+                        f"P:{res_left['pred_offset']:>5.2f}"
                     )
 
                 if res_right:
@@ -2048,8 +1898,7 @@ def main():
                         f"[R-{method_right}] {symbol_right} 舵:{res_right['steer']:5.2f} "
                         f"油:{res_right['throttle']:4.2f} S:{res_right['area']:>5.0f} "
                         f"SL[{side_method_right}]{side_symbol_right}:{res_right['side_offset']:>5.2f} "
-                        f"P:{res_right['pred_offset']:>5.2f} "
-                        f"D:{format_depth_value(res_right['depth'])}"
+                        f"P:{res_right['pred_offset']:>5.2f}"
                     )
 
                 if print_parts:
