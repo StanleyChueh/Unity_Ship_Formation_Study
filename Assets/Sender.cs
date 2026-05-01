@@ -14,7 +14,7 @@ public class MainCameraStreamSender : MonoBehaviour
 
     [Header("串流設定")]
     [Range(1, 60)]
-    public int sendFPS = 15;
+    public int sendFPS = 24;
 
     [Range(0.1f, 1.0f)]
     public float resizeScale = 0.5f;   // 1.0=原解析度, 0.5=半解析度
@@ -23,13 +23,13 @@ public class MainCameraStreamSender : MonoBehaviour
     public bool useFixedCaptureResolution = true;
 
     [Min(64)]
-    public int captureWidth = 1280;
+    public int captureWidth = 640;
 
     [Min(64)]
-    public int captureHeight = 720;
+    public int captureHeight = 360;
 
     [Range(30, 100)]
-    public int jpgQuality = 70; //70
+    public int jpgQuality = 55;
 
     [Header("除錯")]
     public bool autoReconnect = true;

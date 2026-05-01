@@ -83,8 +83,8 @@ SIDE_STREAM_BY_BOAT = {"Left": "LeftSide", "Right": "RightSide"}
 
 SHOW_WINDOW = True
 SHOW_OVERLAY_TEXT = True
-DISPLAY_UPDATE_INTERVAL_SEC = 0.12
-YOLO_MODEL_PATH = "../best.pt"
+DISPLAY_UPDATE_INTERVAL_SEC = 0.0
+YOLO_MODEL_PATH = "../best_v2.pt"
 USE_DEPTH_ANYTHING_TEST = False
 DEPTH_ANYTHING_MODEL_ID = "LiheYoung/depth-anything-small-hf"
 DEPTH_ANYTHING_DEVICE = "cuda"
