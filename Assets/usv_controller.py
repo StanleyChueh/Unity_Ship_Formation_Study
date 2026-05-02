@@ -190,6 +190,9 @@ VISION_TURN_CATCHUP_MAX = 0.18
 VISION_TURN_SPEED_CEILING = 0.82
 VISION_TURN_SLOWDOWN_START = 0.55
 VISION_TURN_SLOWDOWN_MIN_SCALE = 0.78
+VISION_TURN_FORMATION_AREA_BOOST = 0.18
+VISION_TURN_FORMATION_STEER_BOOST = 0.16
+VISION_TURN_FORMATION_THROTTLE_SCALE = 0.88
 
 # =========================================================
 # 3) 純視覺 PID 控制參數設定
@@ -1680,6 +1683,31 @@ def process_boat_vision_based(sock, tx_port, side):
             steer = 0.0
 
         steer = clamp(steer + side_steer_bias, -1.0, 1.0)
+
+        turn_intensity = clamp(
+            (abs(steer) - STEER_DEADZONE_H) / max(1e-5, (1.0 - STEER_DEADZONE_H)),
+            0.0,
+            1.0,
+        )
+        if turn_intensity > 0.0:
+            if front_method in ("YOLO", "FUSED") and front_visual_ref_ready:
+                turn_area_scale = 1.0 + (VISION_TURN_FORMATION_AREA_BOOST * turn_intensity)
+                target_opt *= turn_area_scale
+                target_min *= turn_area_scale
+                target_max *= turn_area_scale
+                steer = clamp(
+                    steer + math.copysign(VISION_TURN_FORMATION_STEER_BOOST * turn_intensity, steer),
+                    -1.0,
+                    1.0,
+                )
+                throttle_ceiling = max(throttle_ceiling, FOLLOW_FAR_MAX_THROTTLE * 0.92)
+            elif front_method == "WAKE":
+                steer = clamp(
+                    steer + math.copysign(VISION_TURN_FORMATION_STEER_BOOST * 0.7 * turn_intensity, steer),
+                    -1.0,
+                    1.0,
+                )
+                throttle_ceiling = max(throttle_ceiling, VISION_FRONT_CRUISE_THROTTLE)
 
         if steer != 0.0:
             with vision_lock:
