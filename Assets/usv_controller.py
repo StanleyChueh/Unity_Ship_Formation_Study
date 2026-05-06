@@ -234,10 +234,10 @@ SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": 1.0}
 
 # ★ Realistic camera motion simulation (boat-mounted camera shake from motion & waves)
 ENABLE_CAMERA_SHAKE = True  # Enable realistic camera motion
-CAMERA_SHAKE_SPEED_GAIN = 15.0  # Horizontal shake intensity from boat velocity (pixels/knot)
-CAMERA_WAVE_FREQ = 0.8  # Wave oscillation frequency (Hz)
+CAMERA_SHAKE_SPEED_GAIN = 8.0  # Horizontal shake intensity from boat velocity (pixels/knot)
+CAMERA_WAVE_FREQ = 0.6  # Wave oscillation frequency (Hz)
 CAMERA_WAVE_AMP_BASE = 3.0  # Base vertical wave amplitude (pixels)
-CAMERA_WAVE_AMP_SPEED_GAIN = 12.0  # Wave amplitude increases with speed (pixels per knot)
+CAMERA_WAVE_AMP_SPEED_GAIN = 5.0  # Wave amplitude increases with speed (pixels per knot)
 
 # =========================================================
 # 4) 共享狀態區
