@@ -18,8 +18,8 @@ public class ShipUDPInterface : MonoBehaviour
     public int receivePort = 5065; // 接收 Python 指令的通道
 
     [Header("動力參數")]
-    public float moveForce = 100000.0f;
-    public float turnTorque = 50000.0f;
+    public float moveForce = 20000.0f;
+    public float turnTorque = 20000.0f;
 
     [Header("啟動時原地待命")]
     public bool holdSpawnPoseUntilLeaderMoves = true;
@@ -187,7 +187,14 @@ public class ShipUDPInterface : MonoBehaviour
         rb.AddRelativeForce(Vector3.up * targetThrottle * moveForce); 
         
         // ★ 換回 Vector3.forward！這才是這艘船正確的轉向軸！
-        rb.AddRelativeTorque(Vector3.forward * targetSteer * turnTorque);      
+        rb.AddRelativeTorque(Vector3.forward * targetSteer * turnTorque);
+        
+        // ★ Enforce maxSpeed by clamping velocity magnitude (independent speed limit per boat)
+        float currentSpeed = rb.velocity.magnitude;
+        if (currentSpeed > maxSpeed)
+        {
+            rb.velocity = rb.velocity.normalized * maxSpeed;
+        }
     }
 
     bool ShouldHoldSpawnPose()

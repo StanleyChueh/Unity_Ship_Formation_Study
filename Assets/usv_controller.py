@@ -22,11 +22,11 @@ except Exception:
 # =========================================================
 UDP_IP = "127.0.0.1"
 
-# 左護法 (Follower_Left)
+# (Follower_Left)
 PORT_LEFT_RX = 5066
 PORT_LEFT_TX = 5065
 
-# 右護法 (Follower_Right)
+# (Follower_Right)
 PORT_RIGHT_RX = 5068
 PORT_RIGHT_TX = 5067
 
@@ -39,7 +39,7 @@ sock_right.bind((UDP_IP, PORT_RIGHT_RX))
 sock_right.setblocking(False)
 
 # =========================================================
-# 2) 視覺處理 TCP 設定
+# 2) TCP setting 
 # =========================================================
 HOST = "0.0.0.0"
 PORT_LEFT_FRONT_CAM = 9998
@@ -106,6 +106,7 @@ YOLO_IMGSZ = 640
 YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
+ENABLE_WAKE_DETECTION = False
 VISION_CPU_THREADS = max(1, min(8, (os.cpu_count() or 4)))
 IGNORE_TOP_RATIO = 0.25
 IGNORE_BOTTOM_RATIO = 0.18
@@ -154,18 +155,18 @@ PREDICTION_MIN_VERTICAL_STEP = 0.010
 PREDICTION_MIN_AREA_RATIO_STEP = 0.045
 PREDICTION_CONTROL_MIN_CONF = 0.32
 
-SIDE_TRACK_STEER_KP = 0.95
-SIDE_TRACK_MAX_STEER_BIAS = 0.22
+SIDE_TRACK_STEER_KP = 0.62
+SIDE_TRACK_MAX_STEER_BIAS = 0.14
 SIDE_TRACK_MAX_THROTTLE_BIAS = 0.14
 SIDE_TRACK_AREA_GAIN = 0.18
-SIDE_STEER_DEADZONE_H = 0.03
+SIDE_STEER_DEADZONE_H = 0.05
 SIDE_STALE_BIAS_SCALE = 0.72
-YOLO_TRACK_STEER_GAIN = 1.06
+YOLO_TRACK_STEER_GAIN = 0.92
 YOLO_TRACK_THROTTLE_GAIN = 1.08
 WAKE_TRACK_STEER_GAIN = 0.90
 WAKE_TRACK_THROTTLE_GAIN = 0.82
 WAKE_TRACK_AREA_BIAS = 0.88
-FOLLOWER_TRACK_STEER_GAIN = 0.82
+FOLLOWER_TRACK_STEER_GAIN = 0.70
 FOLLOWER_TRACK_THROTTLE_GAIN = 0.90
 FOLLOWER_TRACK_AREA_BIAS = 0.84
 FOLLOWER_MOTION_MIN_CONF = 0.10
@@ -191,14 +192,19 @@ VISION_TURN_SPEED_CEILING = 0.82
 VISION_TURN_SLOWDOWN_START = 0.55
 VISION_TURN_SLOWDOWN_MIN_SCALE = 0.78
 VISION_TURN_FORMATION_AREA_BOOST = 0.18
-VISION_TURN_FORMATION_STEER_BOOST = 0.16
+VISION_TURN_FORMATION_STEER_BOOST = 0.08
 VISION_TURN_FORMATION_THROTTLE_SCALE = 0.88
+FOLLOWER_PAIR_AREA_BALANCE_TOLERANCE_RATIO = 0.08
+FOLLOWER_PAIR_CATCHUP_GAIN = 0.22
+FOLLOWER_PAIR_CATCHUP_MAX = 0.18
 
 # =========================================================
 # 3) 純視覺 PID 控制參數設定
 # =========================================================
-KV_STEER = 1.35
-STEER_DEADZONE_H = 0.035
+KV_STEER = 1.02
+STEER_DEADZONE_H = 0.06
+FINAL_STEER_DEADZONE_H = 0.045
+STEER_SLEW_RATE_PER_SEC = 2.4
 SEARCH_MODE_STEER = 0.5
 KV_THROTTLE_P = 0.00018
 FOLLOW_BASE_THROTTLE = 0.40
@@ -225,6 +231,13 @@ PREDICTION_ARROW_MIN_CONF = 0.12
 PREDICTION_ARROW_PIXELS = 90
 PREDICTION_ARROW_MIN_PIXELS = 18
 SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": 1.0}
+
+# ★ Realistic camera motion simulation (boat-mounted camera shake from motion & waves)
+ENABLE_CAMERA_SHAKE = True  # Enable realistic camera motion
+CAMERA_SHAKE_SPEED_GAIN = 15.0  # Horizontal shake intensity from boat velocity (pixels/knot)
+CAMERA_WAVE_FREQ = 0.8  # Wave oscillation frequency (Hz)
+CAMERA_WAVE_AMP_BASE = 3.0  # Base vertical wave amplitude (pixels)
+CAMERA_WAVE_AMP_SPEED_GAIN = 12.0  # Wave amplitude increases with speed (pixels per knot)
 
 # =========================================================
 # 4) 共享狀態區
@@ -292,6 +305,14 @@ formation_targets = {
     },
 }
 
+controller_states = {
+    boat_side: {
+        "last_steer": 0.0,
+        "last_command_time": 0.0,
+    }
+    for boat_side in BOAT_SIDES
+}
+
 
 # =========================================================
 # 工具函式
@@ -332,6 +353,72 @@ def clamp(value, low, high):
 
 def blend_value(previous, current, alpha):
     return previous + (current - previous) * alpha
+
+
+def get_peer_boat_side(boat_side):
+    return "Right" if boat_side == "Left" else "Left"
+
+
+def filter_steer_command(boat_side, raw_steer):
+    control_state = controller_states[boat_side]
+    current_time = time.time()
+
+    if abs(raw_steer) < FINAL_STEER_DEADZONE_H:
+        raw_steer = 0.0
+
+    last_steer = control_state.get("last_steer", 0.0)
+    last_command_time = control_state.get("last_command_time", 0.0)
+    if last_command_time > 0.0:
+        dt = clamp(current_time - last_command_time, 0.01, 0.25)
+    else:
+        dt = 0.05
+
+    max_delta = STEER_SLEW_RATE_PER_SEC * dt
+    filtered_steer = clamp(raw_steer, last_steer - max_delta, last_steer + max_delta)
+
+    if abs(filtered_steer) < FINAL_STEER_DEADZONE_H and raw_steer == 0.0:
+        filtered_steer = 0.0
+
+    control_state["last_steer"] = filtered_steer
+    control_state["last_command_time"] = current_time
+    return filtered_steer
+
+
+def compute_pair_catchup_boost(boat_side, own_detected, own_stale, own_method, own_area):
+    if not own_detected or own_stale or own_method not in ("YOLO", "FUSED"):
+        return 0.0, None, 0.0
+
+    peer_side = get_peer_boat_side(boat_side)
+    with vision_lock:
+        peer_state = vision_states[FRONT_STREAM_BY_BOAT[peer_side]].copy()
+
+    if (
+        not peer_state.get("target_detected", False)
+        or peer_state.get("target_stale", False)
+        or peer_state.get("method") not in ("YOLO", "FUSED")
+    ):
+        return 0.0, None, 0.0
+
+    peer_area = max(float(peer_state.get("target_area", 0.0)), 1.0)
+    own_area = max(float(own_area), 1.0)
+    dominant_area = max(peer_area, own_area, 1.0)
+    area_gap_ratio = (peer_area - own_area) / dominant_area
+
+    if area_gap_ratio <= FOLLOWER_PAIR_AREA_BALANCE_TOLERANCE_RATIO:
+        return 0.0, peer_area, area_gap_ratio
+
+    boost_ratio = clamp(
+        (area_gap_ratio - FOLLOWER_PAIR_AREA_BALANCE_TOLERANCE_RATIO)
+        / max(1e-5, (1.0 - FOLLOWER_PAIR_AREA_BALANCE_TOLERANCE_RATIO)),
+        0.0,
+        1.0,
+    )
+    boost = clamp(
+        boost_ratio * FOLLOWER_PAIR_CATCHUP_GAIN,
+        0.0,
+        FOLLOWER_PAIR_CATCHUP_MAX,
+    )
+    return boost, peer_area, area_gap_ratio
 
 
 def get_tracking_gains(method, is_stale):
@@ -574,6 +661,45 @@ def fuse_track_sources(yolo_target, wake_target):
     fused["method"] = "FUSED"
     fused["wake_weight"] = wake_weight / max(weight_sum, 1e-5)
     return fused
+
+
+def apply_camera_shake(frame, boat_speed_mps, timestamp):
+    """
+    ★ Realistic camera shake simulation for boat-mounted camera.
+    Simulates motion blur and wave-induced vertical oscillation.
+    """
+    if frame is None or not ENABLE_CAMERA_SHAKE:
+        return frame
+
+    height, width = frame.shape[:2]
+    
+    # Convert m/s to knots for intuitive tuning
+    speed_knots = boat_speed_mps * 1.94384
+    
+    # Horizontal shake from acceleration/forward motion
+    horizontal_shake = int(speed_knots * CAMERA_SHAKE_SPEED_GAIN * 0.1 * np.sin(timestamp * 5.0))
+    
+    # Wave-induced vertical oscillation (sinusoidal)
+    wave_amplitude = CAMERA_WAVE_AMP_BASE + (speed_knots * CAMERA_WAVE_AMP_SPEED_GAIN)
+    vertical_shift = int(wave_amplitude * np.sin(timestamp * 2 * np.pi * CAMERA_WAVE_FREQ))
+    
+    # Apply affine transformation for shake
+    src_pts = np.float32([[0, 0], [width, 0], [0, height]])
+    dst_x_offset = horizontal_shake
+    dst_y_offset = vertical_shift
+    dst_pts = np.float32([
+        [dst_x_offset, dst_y_offset],
+        [width + dst_x_offset, dst_y_offset],
+        [dst_x_offset, height + dst_y_offset]
+    ])
+    
+    try:
+        matrix = cv2.getAffineTransform(src_pts, dst_pts)
+        shaken_frame = cv2.warpAffine(frame, matrix, (width, height), 
+                                       borderMode=cv2.BORDER_REFLECT_101)
+        return shaken_frame
+    except Exception:
+        return frame
 
 
 def draw_prediction_arrow(frame, center_point, offset_velocity, vertical_velocity, confidence):
@@ -1211,22 +1337,29 @@ def cv_processing_thread():
 
                 if role == "front":
                     wake_reference_bbox = yolo_target["bbox"] if yolo_target is not None else None
-                    wake_result = detect_stern_wake(
-                        frame,
-                        preferred_offset if has_recent_track else None,
-                        wake_reference_bbox,
-                    )
-                    if wake_result is not None:
-                        wake_mask = wake_result["mask"]
-                        wake_target = build_track_candidate(
-                            wake_result["bbox"],
-                            wake_result["area"],
-                            wake_result["center_offset"],
-                            wake_result["center"],
-                            "WAKE",
+                    if ENABLE_WAKE_DETECTION:
+                        wake_result = detect_stern_wake(
+                            frame,
+                            preferred_offset if has_recent_track else None,
+                            wake_reference_bbox,
                         )
+                        if wake_result is not None:
+                            wake_mask = wake_result["mask"]
+                            wake_target = build_track_candidate(
+                                wake_result["bbox"],
+                                wake_result["area"],
+                                wake_result["center_offset"],
+                                wake_result["center"],
+                                "WAKE",
+                            )
 
-                    fused_target = fuse_track_sources(yolo_target, wake_target)
+                        fused_target = fuse_track_sources(yolo_target, wake_target)
+                    else:
+                        fused_target = yolo_target.copy() if yolo_target is not None else None
+                        if fused_target is not None:
+                            fused_target["method"] = "YOLO"
+                            fused_target["wake_weight"] = 0.0
+
                     if fused_target is not None:
                         best_box = fused_target["bbox"]
                         best_area = fused_target["area"]
@@ -1607,6 +1740,9 @@ def process_boat_vision_based(sock, tx_port, side):
     side_effective_offset = side_offset
     side_effective_area = side_area
     side_area_error_ratio = 0.0
+    pair_catchup_boost = 0.0
+    peer_front_area = None
+    pair_area_gap_ratio = 0.0
     steer_gain, throttle_gain = get_tracking_gains(front_method, front_stale)
 
     if side_detected and side_visual_ref_ready:
@@ -1762,6 +1898,17 @@ def process_boat_vision_based(sock, tx_port, side):
             # Wake 只拿來做跟蹤方向的補強，不要比 bbox 距離控制更激進。
             throttle = min(throttle, VISION_FRONT_CRUISE_THROTTLE)
 
+        pair_catchup_boost, peer_front_area, pair_area_gap_ratio = compute_pair_catchup_boost(
+            side,
+            front_detected,
+            front_stale,
+            front_method,
+            effective_area,
+        )
+        if pair_catchup_boost > 0.0:
+            throttle += pair_catchup_boost
+            throttle_ceiling = max(throttle_ceiling, FOLLOW_FAR_MAX_THROTTLE)
+
         steer_mag = abs(steer)
         if steer_mag > VISION_TURN_SLOWDOWN_START:
             turn_excess = clamp(
@@ -1780,7 +1927,7 @@ def process_boat_vision_based(sock, tx_port, side):
     else:
         if DISABLE_SEARCH_MODE:
             throttle = max(0.0, side_throttle_bias)
-            steer = side_steer_bias
+            steer = 0.0
         else:
             # 沒看到 leader 時，靠最後觀測方向做小幅搜尋，並保留 side camera 修正。
             throttle = SEARCH_FORWARD_THROTTLE + max(0.0, side_throttle_bias)
@@ -1794,7 +1941,7 @@ def process_boat_vision_based(sock, tx_port, side):
                 steer = (lost_search_dir * SEARCH_MODE_STEER) + side_steer_bias
 
     throttle = clamp(throttle, 0.0, throttle_ceiling)
-    steer = clamp(steer, -1.0, 1.0)
+    steer = filter_steer_command(side, clamp(steer, -1.0, 1.0))
 
     msg = json.dumps({"throttle": throttle, "steer": steer})
     sock.sendto(msg.encode("utf-8"), (UDP_IP, tx_port))
@@ -1813,6 +1960,9 @@ def process_boat_vision_based(sock, tx_port, side):
         "side_area": side_area if side_detected else 0.0,
         "offset": front_offset if front_detected else 0.0,
         "side_offset": side_effective_offset if side_detected else 0.0,
+        "peer_area": peer_front_area if peer_front_area is not None else 0.0,
+        "pair_area_gap_ratio": pair_area_gap_ratio,
+        "pair_catchup_boost": pair_catchup_boost,
         "pred_offset": front_predicted_offset if front_detected else 0.0,
         "pred_conf": front_prediction_confidence if front_detected else 0.0,
         "side_steer_bias": side_steer_bias,
@@ -1888,8 +2038,20 @@ def main():
 
             if SHOW_WINDOW:
                 t0 = time.time()
+                current_loop_time = time.time()
+                # Get average boat speed for camera shake
+                try:
+                    with speed_lock:
+                        left_spd_knots = boat_speeds.get("Left", 0.0)
+                        right_spd_knots = boat_speeds.get("Right", 0.0)
+                    avg_speed_mps = ((left_spd_knots + right_spd_knots) / 2.0) / 1.94384
+                except Exception:
+                    avg_speed_mps = 0.0
+                
                 for stream_name, frame in disp_frames.items():
-                    cv2.imshow(CAMERA_STREAMS[stream_name]["window"], frame)
+                    # Apply realistic camera shake based on boat motion and waves
+                    shaken_frame = apply_camera_shake(frame, avg_speed_mps, current_loop_time)
+                    cv2.imshow(CAMERA_STREAMS[stream_name]["window"], shaken_frame)
                 t_imshow = time.time() - t0
 
                 t0 = time.time()
@@ -1914,7 +2076,8 @@ def main():
                         f"[L-{method_left}] {symbol_left} 舵:{res_left['steer']:5.2f} "
                         f"油:{res_left['throttle']:4.2f} S:{res_left['area']:>5.0f} "
                         f"SL[{side_method_left}]{side_symbol_left}:{res_left['side_offset']:>5.2f} "
-                        f"P:{res_left['pred_offset']:>5.2f}"
+                        f"P:{res_left['pred_offset']:>5.2f} "
+                        f"B:{res_left['pair_catchup_boost']:>4.2f}"
                     )
 
                 if res_right:
@@ -1926,7 +2089,8 @@ def main():
                         f"[R-{method_right}] {symbol_right} 舵:{res_right['steer']:5.2f} "
                         f"油:{res_right['throttle']:4.2f} S:{res_right['area']:>5.0f} "
                         f"SL[{side_method_right}]{side_symbol_right}:{res_right['side_offset']:>5.2f} "
-                        f"P:{res_right['pred_offset']:>5.2f}"
+                        f"P:{res_right['pred_offset']:>5.2f} "
+                        f"B:{res_right['pair_catchup_boost']:>4.2f}"
                     )
 
                 if print_parts:
