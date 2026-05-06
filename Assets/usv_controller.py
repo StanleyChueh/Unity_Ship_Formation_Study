@@ -155,6 +155,11 @@ PREDICTION_MIN_VERTICAL_STEP = 0.010
 PREDICTION_MIN_AREA_RATIO_STEP = 0.045
 PREDICTION_CONTROL_MIN_CONF = 0.32
 
+# Front-priority arbitration: when front detection is weak or lost, scale side-camera influence
+FRONT_PRIORITY_CONFIDENCE = 0.35  # min prediction confidence to consider front "confident"
+FRONT_PRIORITY_STALE_SCALE = 0.25  # scale applied to side biases when front is stale/low-conf
+FRONT_PRIORITY_NO_FRONT_STEER_SCALE = 0.20  # steer scale when front is entirely lost
+
 SIDE_TRACK_STEER_KP = 0.62
 SIDE_TRACK_MAX_STEER_BIAS = 0.14
 SIDE_TRACK_MAX_THROTTLE_BIAS = 0.14
@@ -232,7 +237,7 @@ PREDICTION_ARROW_PIXELS = 90
 PREDICTION_ARROW_MIN_PIXELS = 18
 SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": 1.0}
 
-# ★ Realistic camera motion simulation (boat-mounted camera shake from motion & waves)
+# Realistic camera motion simulation (boat-mounted camera shake from motion & waves)
 ENABLE_CAMERA_SHAKE = True  # Enable realistic camera motion
 CAMERA_SHAKE_SPEED_GAIN = 8.0  # Horizontal shake intensity from boat velocity (pixels/knot)
 CAMERA_WAVE_FREQ = 0.6  # Wave oscillation frequency (Hz)
@@ -1818,6 +1823,14 @@ def process_boat_vision_based(sock, tx_port, side):
         else:
             steer = 0.0
 
+        # Arbitration: prioritize front (leader) tracking over side corrections.
+        try:
+            if front_stale or (front_prediction_confidence < FRONT_PRIORITY_CONFIDENCE):
+                side_steer_bias *= FRONT_PRIORITY_STALE_SCALE
+                side_throttle_bias *= FRONT_PRIORITY_STALE_SCALE
+        except Exception:
+            pass
+
         steer = clamp(steer + side_steer_bias, -1.0, 1.0)
 
         turn_intensity = clamp(
@@ -1925,12 +1938,46 @@ def process_boat_vision_based(sock, tx_port, side):
                 throttle = max(throttle * STALE_TARGET_THROTTLE_SCALE, SEARCH_FORWARD_THROTTLE)
 
     else:
-        if DISABLE_SEARCH_MODE:
-            throttle = max(0.0, side_throttle_bias)
+        # Front leader lost: fallback to side follower chasing when available.
+        # Once front leader is detected again, code automatically returns to front-follow branch.
+        side_chase_available = side_detected and (side_method == "FOLLOWER")
+
+        if side_chase_available:
+            # Keep lateral alignment using side follower offset.
+            steer = clamp(side_steer_bias / max(FRONT_PRIORITY_NO_FRONT_STEER_SCALE, 1e-5), -SEARCH_MODE_STEER, SEARCH_MODE_STEER)
+
+            if steer != 0.0:
+                with vision_lock:
+                    vision_states[FRONT_STREAM_BY_BOAT[side]]["lost_search_dir"] = 1.0 if steer > 0 else -1.0
+
+            # Use side follower bbox area as temporary distance cue.
+            if side_visual_ref_ready and desired_side_area > FOLLOWER_AREA_MIN:
+                side_target_opt = desired_side_area
+            else:
+                side_target_opt = FOLLOWER_AREA_OPT
+
+            side_follow_error_ratio = normalize_area_error(side_target_opt, side_effective_area)
+            side_follow_shaped = shape_area_error(side_follow_error_ratio)
+
+            if side_follow_error_ratio <= 0.0:
+                throttle = 0.0
+            else:
+                throttle = clamp(
+                    (side_follow_shaped * SIDE_TRACK_AREA_GAIN * FOLLOWER_TRACK_THROTTLE_GAIN)
+                    + (SEARCH_FORWARD_THROTTLE * 0.70),
+                    0.0,
+                    FOLLOW_MAX_THROTTLE * 0.78,
+                )
+
+            if side_stale:
+                steer *= SIDE_STALE_BIAS_SCALE
+                throttle *= SIDE_STALE_BIAS_SCALE
+        elif DISABLE_SEARCH_MODE:
+            throttle = 0.0
             steer = 0.0
         else:
-            # 沒看到 leader 時，靠最後觀測方向做小幅搜尋，並保留 side camera 修正。
-            throttle = SEARCH_FORWARD_THROTTLE + max(0.0, side_throttle_bias)
+            # 沒看到 leader 且 side follower 也不可用時，靠最後觀測方向做小幅搜尋。
+            throttle = SEARCH_FORWARD_THROTTLE
             if abs(last_known_offset) > STEER_DEADZONE_H:
                 steer = clamp(
                     last_known_offset * KV_STEER * SEARCH_STEER_GAIN,
@@ -1938,7 +1985,7 @@ def process_boat_vision_based(sock, tx_port, side):
                     SEARCH_MODE_STEER,
                 )
             else:
-                steer = (lost_search_dir * SEARCH_MODE_STEER) + side_steer_bias
+                steer = lost_search_dir * SEARCH_MODE_STEER
 
     throttle = clamp(throttle, 0.0, throttle_ceiling)
     steer = filter_steer_command(side, clamp(steer, -1.0, 1.0))
