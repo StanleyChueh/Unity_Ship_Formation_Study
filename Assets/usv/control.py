@@ -110,6 +110,34 @@ def compute_turn_catchup_boost(steer, front_area_error_ratio, side_area_error_ra
     return clamp(catchup_need * turn_scale * VISION_TURN_CATCHUP_GAIN, 0.0, VISION_TURN_CATCHUP_MAX)
 
 
+def compute_turn_predictive_assist(offset_velocity, area_velocity, prediction_confidence):
+    confidence = clamp(
+        (float(prediction_confidence) - PREDICTION_CONTROL_MIN_CONF) / max(1e-5, (1.0 - PREDICTION_CONTROL_MIN_CONF)),
+        0.0,
+        1.0,
+    )
+    if confidence <= 0.0:
+        return 0.0, 0.0, 0.0
+
+    offset_motion = clamp(abs(float(offset_velocity)) / 0.12, 0.0, 1.0)
+    area_motion = clamp(abs(float(area_velocity)) / 0.12, 0.0, 1.0)
+    motion = max(offset_motion, area_motion)
+    if motion <= 0.0:
+        return 0.0, 0.0, confidence
+
+    steer_bias = clamp(
+        float(offset_velocity) * VISION_TURN_PREDICTIVE_STEER_GAIN,
+        -VISION_TURN_PREDICTIVE_STEER_MAX,
+        VISION_TURN_PREDICTIVE_STEER_MAX,
+    )
+    throttle_bias = clamp(
+        motion * confidence * VISION_TURN_PREDICTIVE_THROTTLE_GAIN,
+        0.0,
+        VISION_TURN_PREDICTIVE_THROTTLE_MAX,
+    )
+    return steer_bias, throttle_bias, confidence
+
+
 def compute_visual_far_boost(area, predicted_area, area_velocity, target_opt, method):
     target_opt = max(float(target_opt), 1.0)
     size_gap = clamp((target_opt - float(area)) / target_opt, 0.0, 1.0)
@@ -159,6 +187,7 @@ def process_boat_vision_based(sock, tx_port, side):
     front_predicted_area = front_state.get("predicted_area", front_area)
     front_prediction_confidence = front_state.get("prediction_confidence", 0.0)
     front_track_area_velocity = front_state.get("track_area_velocity", 0.0)
+    front_track_offset_velocity = front_state.get("track_offset_velocity", 0.0)
 
     side_detected = side_state["target_detected"]
     side_stale = side_state.get("target_stale", False)
@@ -254,6 +283,12 @@ def process_boat_vision_based(sock, tx_port, side):
             front_predicted_area,
             clamp(prediction_control_weight * PREDICTION_AREA_BLEND, 0.0, 1.0),
         )
+        # If the leader looks small in the frame, treat it as "far" and
+        # prefer chasing (reduce formation urgency and boost chase terms).
+        try:
+            is_far = float(effective_area) < float(LEADER_FAR_AREA_THRESHOLD)
+        except Exception:
+            is_far = False
         steer_error = effective_offset - desired_front_offset if front_visual_ref_ready else effective_offset
         predicted_area_ratio = normalize_area_error(target_opt, front_predicted_area)
         area_velocity_ratio = float(front_track_area_velocity) / max(float(target_opt), 1.0)
@@ -271,6 +306,14 @@ def process_boat_vision_based(sock, tx_port, side):
             pass
 
         steer = clamp(steer + side_steer_bias, -1.0, 1.0)
+
+        predictive_steer_bias, predictive_throttle_boost, predictive_confidence = compute_turn_predictive_assist(
+            front_track_offset_velocity,
+            front_track_area_velocity,
+            front_prediction_confidence,
+        )
+        if predictive_confidence > 0.0:
+            steer = clamp(steer + predictive_steer_bias, -1.0, 1.0)
 
         turn_intensity = clamp(
             (abs(steer) - STEER_DEADZONE_H) / max(1e-5, (1.0 - STEER_DEADZONE_H)),
@@ -296,6 +339,10 @@ def process_boat_vision_based(sock, tx_port, side):
                 )
                 throttle_ceiling = max(throttle_ceiling, VISION_FRONT_CRUISE_THROTTLE)
 
+        if predictive_confidence > 0.0:
+            throttle += predictive_throttle_boost
+            throttle_ceiling = max(throttle_ceiling, VISION_TURN_PREDICTIVE_SPEED_CEILING)
+
         if steer != 0.0:
             with vision_lock:
                 vision_states[FRONT_STREAM_BY_BOAT[side]]["lost_search_dir"] = 1.0 if steer > 0 else -1.0
@@ -320,8 +367,10 @@ def process_boat_vision_based(sock, tx_port, side):
             method=front_method,
         )
         if far_boost > 0.0:
+            if is_far:
+                far_boost *= FAR_VISUAL_FAR_BOOST_MULTIPLIER
+                throttle_ceiling = max(throttle_ceiling, FOLLOW_FAR_MAX_THROTTLE)
             throttle += far_boost
-            throttle_ceiling = FOLLOW_FAR_MAX_THROTTLE
 
         cruise_throttle = compute_centered_cruise_throttle(
             steer_error=steer_error,
@@ -352,6 +401,12 @@ def process_boat_vision_based(sock, tx_port, side):
             effective_area,
         )
         if pair_catchup_boost > 0.0:
+            if is_far:
+                pair_catchup_boost = clamp(
+                    pair_catchup_boost * PAIR_CATCHUP_MULTIPLIER_WHEN_FAR,
+                    0.0,
+                    FOLLOWER_PAIR_CATCHUP_MAX,
+                )
             throttle += pair_catchup_boost
             throttle_ceiling = max(throttle_ceiling, FOLLOW_FAR_MAX_THROTTLE)
 
@@ -413,6 +468,7 @@ def process_boat_vision_based(sock, tx_port, side):
     sock.sendto(msg.encode("utf-8"), (UDP_IP, tx_port))
 
     speed_mps = state.get("speed", 0.0)
+    leader_speed_mps = state.get("leader_speed", 0.0)
     return {
         "detected": front_detected,
         "stale": front_stale,
@@ -434,4 +490,5 @@ def process_boat_vision_based(sock, tx_port, side):
         "side_steer_bias": side_steer_bias,
         "side_throttle_bias": side_throttle_bias,
         "speed_knots": speed_mps * 1.94384,
+        "leader_speed_knots": leader_speed_mps * 1.94384,
     }
