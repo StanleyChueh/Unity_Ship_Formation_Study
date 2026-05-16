@@ -1,10 +1,15 @@
 import threading
 
-from .config import BOAT_SIDES, CAMERA_STREAMS
+from .config import BOAT_SIDES, CAMERA_STREAMS, ENABLE_KALMAN_FILTER
 
 
 vision_lock = threading.Lock()
 frame_lock = threading.Lock()
+
+
+runtime_settings = {
+    "enable_kalman_filter": ENABLE_KALMAN_FILTER,
+}
 
 
 def make_track_state(default_search_dir):
@@ -72,6 +77,14 @@ controller_states = {
     boat_side: {
         "last_steer": 0.0,
         "last_command_time": 0.0,
+    }
+    for boat_side in BOAT_SIDES
+}
+
+boat_comm_states = {
+    boat_side: {
+        "connected": False,
+        "last_packet_time": 0.0,
     }
     for boat_side in BOAT_SIDES
 }

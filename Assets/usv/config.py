@@ -18,6 +18,10 @@ PORT_LEFT_TX = 5065
 PORT_RIGHT_RX = 5068
 PORT_RIGHT_TX = 5067
 
+# (Leader)
+LEADER_RX = 5075
+LEADER_TX = 5074
+
 HOST = "0.0.0.0"
 PORT_LEFT_FRONT_CAM = 9998
 PORT_RIGHT_FRONT_CAM = 9999
@@ -87,6 +91,41 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
+ENABLE_KALMAN_FILTER = False
+
+# ---------------------------------------------------------
+# Leader auto-trajectory (for deterministic experiments)
+# If enabled, the Python app will command the chosen leader
+# boat to follow a preset trajectory at startup. This helps
+# run repeatable experiments (e.g. compare with/without KF).
+LEADER_AUTO_TRAJECTORY_ENABLE = True
+# Which UDP TX port to send the leader command to. Default targets the left-boat TX port.
+# Set this to the port Unity's `ShipUDPInterface.receivePort` (on the leader) is listening on.
+LEADER_AUTO_TRAJECTORY_TX_PORT = 5075
+# Initial control mode to request on the leader: "Keyboard" or "Trajectory".
+# If set to "Keyboard", the leader will accept manual keyboard control.
+# If set to "Trajectory", the leader will be set to follow the configured trajectory.
+LEADER_INITIAL_CONTROL_MODE = "Trajectory"
+# Trajectory selection: "Straight", "Circle", "Triangle", "Rectangle"
+LEADER_TRAJECTORY_MODE = "Straight"
+LEADER_TRAJECTORY_SPEED = 21.0
+LEADER_TRAJECTORY_CIRCLE_RADIUS = 18.0
+LEADER_TRAJECTORY_TRIANGLE_SIDE = 30.0
+LEADER_TRAJECTORY_RECT_SIZE = (36.0, 22.0)
+LEADER_TRAJECTORY_LOOP = True
+# If true, the leader will be reset/anchored when the command is applied
+LEADER_TRAJECTORY_RESET_ON_APPLY = True
+# Retry leader startup command to avoid missing one-shot UDP when Unity enters
+# Play mode slightly later than Python start.
+# Total sends includes the first send (e.g. 5 means send immediately + 4 retries).
+LEADER_STARTUP_CMD_RETRY_COUNT = 5
+LEADER_STARTUP_CMD_RETRY_INTERVAL_SEC = 1.0
+# Wait for the follower camera links to connect before sending the leader command.
+LEADER_WAIT_FOR_FOLLOWER_CONNECTIONS = True
+LEADER_CONNECTION_WAIT_TIMEOUT_SEC = 30.0
+LEADER_CONNECTION_POLL_INTERVAL_SEC = 0.10
+# ---------------------------------------------------------
+
 VISION_CPU_THREADS = max(1, min(8, (os.cpu_count() or 4)))
 IGNORE_TOP_RATIO = 0.25
 IGNORE_BOTTOM_RATIO = 0.18
@@ -211,7 +250,7 @@ KV_THROTTLE_P = 0.00018
 FOLLOW_BASE_THROTTLE = 0.40
 FOLLOW_MAX_THROTTLE = 0.62
 
-# Area thresholds
+# Area thresholds (How close/far the target is based on its image area, used for various heuristics and tuning)
 YOLO_AREA_OPT = 250000
 YOLO_AREA_MIN = 200
 YOLO_AREA_MAX = 350000

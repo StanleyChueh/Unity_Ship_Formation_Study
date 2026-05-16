@@ -3,6 +3,7 @@
 '''
 
 import socket
+import json
 import threading
 import time
 
@@ -10,6 +11,7 @@ import cv2
 
 from .config import (
     CAMERA_STREAMS,
+    ENABLE_KALMAN_FILTER,
     PORT_LEFT_RX,
     PORT_LEFT_TX,
     PORT_RIGHT_RX,
@@ -17,10 +19,25 @@ from .config import (
     SHOW_WINDOW,
     UDP_IP,
     WINDOW_SIZE,
+    LEADER_AUTO_TRAJECTORY_ENABLE,
+    LEADER_AUTO_TRAJECTORY_TX_PORT,
+    LEADER_TRAJECTORY_MODE,
+    LEADER_TRAJECTORY_SPEED,
+    LEADER_TRAJECTORY_CIRCLE_RADIUS,
+    LEADER_TRAJECTORY_TRIANGLE_SIDE,
+    LEADER_TRAJECTORY_RECT_SIZE,
+    LEADER_TRAJECTORY_LOOP,
+    LEADER_TRAJECTORY_RESET_ON_APPLY,
+    LEADER_INITIAL_CONTROL_MODE,
+    LEADER_WAIT_FOR_FOLLOWER_CONNECTIONS,
+    LEADER_CONNECTION_WAIT_TIMEOUT_SEC,
+    LEADER_CONNECTION_POLL_INTERVAL_SEC,
+    LEADER_STARTUP_CMD_RETRY_COUNT,
+    LEADER_STARTUP_CMD_RETRY_INTERVAL_SEC,
 )
 from .control import process_boat_vision_based
 from .helpers import apply_camera_shake, make_status_frame
-from .state import display_frames, frame_lock
+from .state import display_frames, frame_lock, runtime_settings, vision_lock, vision_states
 from .vision import cv_processing_thread, tcp_camera_receiver_thread
 
 
@@ -31,6 +48,60 @@ def _build_udp_socket(port_rx):
     return sock
 
 
+def _send_leader_startup_commands():
+    send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    mode_cmd = {"cmd": "set_control_mode", "mode": str(LEADER_INITIAL_CONTROL_MODE)}
+    send_sock.sendto(json.dumps(mode_cmd).encode("utf-8"), (UDP_IP, LEADER_AUTO_TRAJECTORY_TX_PORT))
+    print(f"[LeaderCmd] Sent control mode '{LEADER_INITIAL_CONTROL_MODE}' to leader port {LEADER_AUTO_TRAJECTORY_TX_PORT}")
+
+    # If trajectory is desired and auto-trajectory is enabled, send the trajectory params too.
+    if str(LEADER_INITIAL_CONTROL_MODE).lower() == "trajectory" and LEADER_AUTO_TRAJECTORY_ENABLE:
+        cmd = {
+            "cmd": "set_trajectory",
+            "mode": LEADER_TRAJECTORY_MODE,
+            "speed": LEADER_TRAJECTORY_SPEED,
+            "circle_radius": LEADER_TRAJECTORY_CIRCLE_RADIUS,
+            "triangle_side_length": LEADER_TRAJECTORY_TRIANGLE_SIDE,
+            "rectangle_size_x": LEADER_TRAJECTORY_RECT_SIZE[0],
+            "rectangle_size_y": LEADER_TRAJECTORY_RECT_SIZE[1],
+            "loop": bool(LEADER_TRAJECTORY_LOOP),
+            "reset": bool(LEADER_TRAJECTORY_RESET_ON_APPLY),
+        }
+        send_sock.sendto(json.dumps(cmd).encode("utf-8"), (UDP_IP, LEADER_AUTO_TRAJECTORY_TX_PORT))
+        print(f"[LeaderCmd] Sent trajectory command to leader port {LEADER_AUTO_TRAJECTORY_TX_PORT}")
+
+    send_sock.close()
+
+
+def _wait_for_follower_connections(timeout_sec, poll_interval_sec):
+    timeout_sec = max(0.0, float(timeout_sec))
+    poll_interval_sec = max(0.05, float(poll_interval_sec))
+    deadline = time.time() + timeout_sec
+    required_streams = ["LeftFront", "RightFront"]
+
+    while True:
+        with vision_lock:
+            connected_streams = {
+                stream_name: bool(vision_states[stream_name].get("connected", False))
+                for stream_name in required_streams
+            }
+
+        if all(connected_streams.values()):
+            print("[LeaderCmd] Both follower camera links are connected.")
+            return True
+
+        if time.time() >= deadline:
+            print(
+                "[LeaderCmd] WARNING: follower camera links not fully connected before timeout; "
+                "leader startup will proceed anyway."
+            )
+            return False
+
+        missing = [stream_name for stream_name, is_connected in connected_streams.items() if not is_connected]
+        print(f"[LeaderCmd] Waiting for follower camera links: {', '.join(missing)}")
+        time.sleep(poll_interval_sec)
+
+
 def main():
     sock_left = _build_udp_socket(PORT_LEFT_RX)
     sock_right = _build_udp_socket(PORT_RIGHT_RX)
@@ -38,6 +109,11 @@ def main():
     print("=======================================")
     print("雙船 Fully Vision-Based 啟動")
     print("=======================================")
+
+    # Retry startup leader command a few times to tolerate startup ordering (Unity Play mode timing).
+    leader_cmd_retries_remaining = max(1, int(LEADER_STARTUP_CMD_RETRY_COUNT))
+    leader_cmd_retry_interval = max(0.05, float(LEADER_STARTUP_CMD_RETRY_INTERVAL_SEC))
+    next_leader_cmd_time = time.time()
 
     if SHOW_WINDOW:
         for _, config in CAMERA_STREAMS.items():
@@ -58,6 +134,10 @@ def main():
         receiver_thread.start()
     t_cv.start()
 
+    if LEADER_AUTO_TRAJECTORY_ENABLE and str(LEADER_INITIAL_CONTROL_MODE).lower() == "trajectory":
+        if bool(LEADER_WAIT_FOR_FOLLOWER_CONNECTIONS):
+            _wait_for_follower_connections(LEADER_CONNECTION_WAIT_TIMEOUT_SEC, LEADER_CONNECTION_POLL_INTERVAL_SEC)
+
     last_print_time = time.time()
     last_loop_time = time.time()
     t_udp = 0.0
@@ -68,6 +148,20 @@ def main():
     try:
         while True:
             loop_start = time.time()
+
+            if leader_cmd_retries_remaining > 0 and loop_start >= next_leader_cmd_time:
+                attempt = (max(1, int(LEADER_STARTUP_CMD_RETRY_COUNT)) - leader_cmd_retries_remaining) + 1
+                total_attempts = max(1, int(LEADER_STARTUP_CMD_RETRY_COUNT))
+                try:
+                    _send_leader_startup_commands()
+                    if total_attempts > 1:
+                        print(f"[LeaderCmd] Startup command attempt {attempt}/{total_attempts}")
+                except Exception as e:
+                    print(f"[LeaderCmd] Failed startup command attempt {attempt}/{total_attempts}: {e}")
+
+                leader_cmd_retries_remaining -= 1
+                next_leader_cmd_time = loop_start + leader_cmd_retry_interval
+
             loop_duration = loop_start - last_loop_time
             if loop_duration > 0.1:
                 print(f"[{loop_start:.2f}] WARNING: Main loop paused for {loop_duration:.3f} seconds!")
@@ -105,6 +199,16 @@ def main():
 
                 for stream_name, frame in disp_frames.items():
                     shaken_frame = apply_camera_shake(frame, avg_speed_mps, current_loop_time)
+                    kalman_enabled = bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
+                    cv2.putText(
+                        shaken_frame,
+                        f"Kalman: {'ON' if kalman_enabled else 'OFF'}  (press K)",
+                        (16, shaken_frame.shape[0] - 16),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.55,
+                        (0, 255, 0) if kalman_enabled else (0, 0, 255),
+                        2,
+                    )
                     cv2.imshow(CAMERA_STREAMS[stream_name]["window"], shaken_frame)
                 t_imshow = time.time() - t0
 
@@ -112,6 +216,10 @@ def main():
                 key = cv2.waitKey(1) & 0xFF
                 if key == 27:
                     break
+                if key in (ord("k"), ord("K")):
+                    new_value = not bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
+                    runtime_settings["enable_kalman_filter"] = new_value
+                    print(f"[Kalman] Filter toggled {'ON' if new_value else 'OFF'}")
                 t_waitkey = time.time() - t0
             else:
                 t_imshow = 0.0

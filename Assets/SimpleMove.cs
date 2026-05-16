@@ -26,6 +26,8 @@ public class SimpleMove : MonoBehaviour
     [Header("自動軌跡測試")]
     public TrajectoryMode trajectoryMode = TrajectoryMode.Circle;
     public float trajectorySpeed = 7.0f;
+    [Tooltip("Acceleration (m/s^2) used to ramp the leader from 0 to trajectorySpeed")]
+    public float trajectoryAcceleration = 2.0f;
     public float straightLeadInDistance = 25.0f;
     public float circleRadius = 18.0f;
     public float triangleSideLength = 30.0f;
@@ -44,6 +46,7 @@ public class SimpleMove : MonoBehaviour
     private Vector3 spawnForwardPlanar;
     private Vector3 spawnRightPlanar;
     private float travelledDistance = 0.0f;
+    private float currentTrajectorySpeed = 0.0f;
 
     void Start()
     {
@@ -60,6 +63,14 @@ public class SimpleMove : MonoBehaviour
     void OnEnable()
     {
         travelledDistance = 0.0f;
+        currentTrajectorySpeed = 0.0f;
+    }
+
+    // Allow external scripts to reset/re-anchor the trajectory origin
+    public void ResetTrajectory()
+    {
+        travelledDistance = 0.0f;
+        CacheSpawnFrame();
     }
 
     void FixedUpdate()
@@ -119,7 +130,11 @@ public class SimpleMove : MonoBehaviour
 
     void RunTrajectoryControl()
     {
-        travelledDistance += Mathf.Max(0f, trajectorySpeed) * Time.fixedDeltaTime;
+        // Ramp current speed towards the configured trajectorySpeed
+        float targetSpeed = Mathf.Max(0f, trajectorySpeed);
+        currentTrajectorySpeed = Mathf.MoveTowards(currentTrajectorySpeed, targetSpeed, trajectoryAcceleration * Time.fixedDeltaTime);
+
+        travelledDistance += currentTrajectorySpeed * Time.fixedDeltaTime;
 
         Vector2 localPoint;
         Vector2 localTangent;
@@ -142,7 +157,7 @@ public class SimpleMove : MonoBehaviour
             Quaternion yawDelta = Quaternion.FromToRotation(spawnForwardPlanar, desiredPlanarForward);
             rb.MoveRotation(yawDelta * spawnRotation);
 
-            Vector3 planarVelocity = desiredPlanarForward * Mathf.Max(0f, trajectorySpeed);
+                Vector3 planarVelocity = desiredPlanarForward * currentTrajectorySpeed;
             rb.velocity = new Vector3(planarVelocity.x, rb.velocity.y, planarVelocity.z);
         }
         else

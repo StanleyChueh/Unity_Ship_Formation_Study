@@ -9,7 +9,7 @@ import time
 
 from .config import *
 from .helpers import blend_value, clamp, filter_steer_command, get_peer_boat_side
-from .state import formation_targets, vision_lock, vision_states
+from .state import boat_comm_states, formation_targets, vision_lock, vision_states
 
 
 def compute_pair_catchup_boost(boat_side, own_detected, own_stale, own_method, own_area):
@@ -171,6 +171,11 @@ def process_boat_vision_based(sock, tx_port, side):
         return None
 
     state = json.loads(latest_data.decode("utf-8"))
+
+    current_time = time.time()
+    with vision_lock:
+        boat_comm_states[side]["connected"] = True
+        boat_comm_states[side]["last_packet_time"] = current_time
 
     with vision_lock:
         front_state = vision_states[FRONT_STREAM_BY_BOAT[side]].copy()

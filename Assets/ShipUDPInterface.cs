@@ -62,6 +62,27 @@ public class ShipUDPInterface : MonoBehaviour
         public float steer;
     }
 
+    [System.Serializable]
+    public class TrajectoryCommand
+    {
+        public string cmd;
+        public string mode;
+        public float speed;
+        public float circle_radius;
+        public float triangle_side_length;
+        public float rectangle_size_x;
+        public float rectangle_size_y;
+        public bool loop;
+        public bool reset;
+    }
+
+    [System.Serializable]
+    public class ControlModeCommand
+    {
+        public string cmd;
+        public string mode;
+    }
+
     private UdpClient udpClient;
     private IPEndPoint remoteEndPoint;
     private Thread receiveThread;
@@ -165,6 +186,81 @@ public class ShipUDPInterface : MonoBehaviour
                 IPEndPoint anyIP = new IPEndPoint(IPAddress.Any, 0);
                 byte[] data = udpClient.Receive(ref anyIP);
                 string text = Encoding.UTF8.GetString(data);
+                // Check for high-level commands (e.g. set_trajectory or set_control_mode)
+                if (text.Contains("\"cmd\""))
+                {
+                    Debug.Log("[ShipUDPInterface] Received: " + text);
+                    try
+                    {
+                        // Determine which GameObject should receive the command:
+                        // prefer explicit `leaderBoat` if assigned, otherwise apply to this GameObject.
+                        Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
+
+                        // Try control-mode first
+                        ControlModeCommand cmode = JsonUtility.FromJson<ControlModeCommand>(text);
+                        if (cmode != null && cmode.cmd == "set_control_mode")
+                        {
+                            SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
+                            if (sm != null)
+                            {
+                                if ((cmode.mode ?? "").ToLower() == "keyboard")
+                                {
+                                    sm.controlMode = SimpleMove.ControlMode.Keyboard;
+                                    Debug.Log($"[ShipUDPInterface] Applied control mode Keyboard to {targetTransform.name}");
+                                }
+                                else
+                                {
+                                    sm.controlMode = SimpleMove.ControlMode.Trajectory;
+                                    sm.ResetTrajectory();
+                                    Debug.Log($"[ShipUDPInterface] Applied control mode Trajectory to {targetTransform.name}");
+                                }
+                            }
+                            else
+                            {
+                                Debug.LogWarning($"[ShipUDPInterface] Received set_control_mode but SimpleMove not found on {targetTransform.name}");
+                            }
+                        }
+
+                        // Then try trajectory params
+                        TrajectoryCommand tcmd = JsonUtility.FromJson<TrajectoryCommand>(text);
+                        if (tcmd != null && tcmd.cmd == "set_trajectory")
+                        {
+                            SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
+                            if (sm != null)
+                            {
+                                sm.controlMode = SimpleMove.ControlMode.Trajectory;
+                                switch ((tcmd.mode ?? "").ToLower())
+                                {
+                                    case "circle":
+                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Circle;
+                                        break;
+                                    case "triangle":
+                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Triangle;
+                                        break;
+                                    case "rectangle":
+                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Rectangle;
+                                        break;
+                                    default:
+                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Straight;
+                                        break;
+                                }
+                                if (tcmd.speed > 0f) sm.trajectorySpeed = tcmd.speed;
+                                if (tcmd.circle_radius > 0f) sm.circleRadius = tcmd.circle_radius;
+                                if (tcmd.triangle_side_length > 0f) sm.triangleSideLength = tcmd.triangle_side_length;
+                                if (tcmd.rectangle_size_x > 0f && tcmd.rectangle_size_y > 0f) sm.rectangleSize = new Vector2(tcmd.rectangle_size_x, tcmd.rectangle_size_y);
+                                sm.loopTrajectory = tcmd.loop;
+                                if (tcmd.reset)
+                                {
+                                    sm.ResetTrajectory();
+                                }
+                            }
+                        }
+                        // If we handled a command, skip control parsing below
+                        if (text.Contains("set_trajectory") || text.Contains("set_control_mode")) continue;
+                    }
+                    catch {}
+                }
+
                 ControlData cmd = JsonUtility.FromJson<ControlData>(text);
                 targetThrottle = cmd.throttle;
                 targetSteer = cmd.steer;

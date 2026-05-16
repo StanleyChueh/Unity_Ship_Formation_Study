@@ -24,7 +24,7 @@ from .helpers import (
     make_status_frame,
     recv_exact,
 )
-from .state import display_frames, formation_targets, frame_lock, latest_frames, vision_lock, vision_states
+from .state import display_frames, formation_targets, frame_lock, latest_frames, runtime_settings, vision_lock, vision_states
 from .kalman import KalmanFilter
 
 
@@ -313,6 +313,60 @@ def detect_stern_wake(frame, preferred_offset=None, reference_bbox=None):
 
 
 def update_track_prediction(state, center_offset, center_y_norm, area, current_time):
+    kalman_enabled = bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
+
+    if not kalman_enabled:
+        state["kf"] = None
+        prev_time = state.get("track_prev_measurement_time", 0.0)
+        prev_offset = state.get("track_prev_center_offset", center_offset)
+        prev_area = state.get("track_prev_area", area)
+
+        predicted_offset = center_offset
+        predicted_area = area
+        confidence = 0.0
+
+        if prev_time > 0.0:
+            dt = current_time - prev_time
+            if 1e-3 < dt <= 1.0:
+                d_offset = center_offset - prev_offset
+                d_area = area - prev_area
+                area_ref = max(area, prev_area, 1.0)
+                area_ratio_step = abs(d_area) / area_ref
+
+                if abs(d_offset) < PREDICTION_MIN_OFFSET_STEP:
+                    d_offset = 0.0
+                if area_ratio_step < PREDICTION_MIN_AREA_RATIO_STEP:
+                    d_area = 0.0
+
+                raw_offset_velocity = d_offset / dt
+                raw_area_velocity = d_area / dt
+                state["track_offset_velocity"] = blend_value(
+                    state.get("track_offset_velocity", 0.0),
+                    raw_offset_velocity,
+                    PREDICTION_VELOCITY_ALPHA,
+                )
+                state["track_area_velocity"] = blend_value(
+                    state.get("track_area_velocity", 0.0),
+                    raw_area_velocity,
+                    PREDICTION_VELOCITY_ALPHA,
+                )
+
+                predicted_offset = clamp(center_offset + state["track_offset_velocity"] * PREDICTION_HORIZON_SEC, -1.0, 1.0)
+                max_area_delta = max(area, prev_area, 1.0) * PREDICTION_MAX_AREA_DELTA_RATIO
+                predicted_area = max(0.0, area + clamp(state["track_area_velocity"] * PREDICTION_HORIZON_SEC, -max_area_delta, max_area_delta))
+                cadence_score = clamp(1.0 - abs(dt - 0.1) / 0.4, 0.0, 1.0)
+                motion_score = max(clamp(abs(d_offset) / 0.08, 0.0, 1.0), clamp(area_ratio_step / 0.30, 0.0, 1.0))
+                confidence = cadence_score * motion_score
+
+        state["track_prev_measurement_time"] = current_time
+        state["track_prev_center_offset"] = center_offset
+        state["track_prev_center_y"] = center_y_norm
+        state["track_prev_area"] = area
+        state["predicted_offset"] = predicted_offset
+        state["predicted_area"] = predicted_area
+        state["prediction_confidence"] = confidence
+        return
+
     # Use a lightweight linear Kalman filter on [offset, offset_vel, area, area_vel]
     prev_time = state.get("track_prev_measurement_time", 0.0)
 
