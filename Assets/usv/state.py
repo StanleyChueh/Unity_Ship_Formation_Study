@@ -36,6 +36,8 @@ def make_track_state(default_search_dir):
         "predicted_offset": 0.0,
         "predicted_area": 0.0,
         "prediction_confidence": 0.0,
+        # optional Kalman filter instance (initialized lazily in vision)
+        "kf": None,
     }
 
 
