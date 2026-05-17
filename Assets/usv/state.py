@@ -85,6 +85,10 @@ boat_comm_states = {
     boat_side: {
         "connected": False,
         "last_packet_time": 0.0,
+        "speed_mps": 0.0,
+        "yaw_deg": 0.0,
+        "yaw_rate_dps": 0.0,
+        "leader_speed_mps": 0.0,
     }
     for boat_side in BOAT_SIDES
 }

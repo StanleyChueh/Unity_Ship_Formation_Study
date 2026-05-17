@@ -12,6 +12,15 @@ from .helpers import blend_value, clamp, filter_steer_command, get_peer_boat_sid
 from .state import boat_comm_states, formation_targets, vision_lock, vision_states
 
 
+def _normalize_angle_deg(angle_deg):
+    value = float(angle_deg)
+    while value > 180.0:
+        value -= 360.0
+    while value < -180.0:
+        value += 360.0
+    return value
+
+
 def compute_pair_catchup_boost(boat_side, own_detected, own_stale, own_method, own_area):
     if not own_detected or own_stale or own_method not in ("YOLO", "FUSED"):
         return 0.0, None, 0.0
@@ -174,8 +183,22 @@ def process_boat_vision_based(sock, tx_port, side):
 
     current_time = time.time()
     with vision_lock:
+        prev_packet_time = float(boat_comm_states[side].get("last_packet_time", 0.0))
+        prev_yaw_deg = float(boat_comm_states[side].get("yaw_deg", state.get("yaw", 0.0)))
+        curr_yaw_deg = float(state.get("yaw", prev_yaw_deg))
+        dt = current_time - prev_packet_time if prev_packet_time > 0.0 else 0.0
+        if dt > 1e-3:
+            yaw_delta = _normalize_angle_deg(curr_yaw_deg - prev_yaw_deg)
+            yaw_rate_dps = yaw_delta / dt
+        else:
+            yaw_rate_dps = float(boat_comm_states[side].get("yaw_rate_dps", 0.0))
+
         boat_comm_states[side]["connected"] = True
         boat_comm_states[side]["last_packet_time"] = current_time
+        boat_comm_states[side]["speed_mps"] = float(state.get("speed", 0.0))
+        boat_comm_states[side]["leader_speed_mps"] = float(state.get("leader_speed", 0.0))
+        boat_comm_states[side]["yaw_deg"] = curr_yaw_deg
+        boat_comm_states[side]["yaw_rate_dps"] = yaw_rate_dps
 
     with vision_lock:
         front_state = vision_states[FRONT_STREAM_BY_BOAT[side]].copy()

@@ -24,7 +24,16 @@ from .helpers import (
     make_status_frame,
     recv_exact,
 )
-from .state import display_frames, formation_targets, frame_lock, latest_frames, runtime_settings, vision_lock, vision_states
+from .state import (
+    boat_comm_states,
+    display_frames,
+    formation_targets,
+    frame_lock,
+    latest_frames,
+    runtime_settings,
+    vision_lock,
+    vision_states,
+)
 from .kalman import KalmanFilter
 
 
@@ -312,7 +321,16 @@ def detect_stern_wake(frame, preferred_offset=None, reference_bbox=None):
     }
 
 
-def update_track_prediction(state, center_offset, center_y_norm, area, current_time):
+def _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset):
+    if not PREDICTION_EGO_COMPENSATION_ENABLE:
+        return 0.0
+
+    yaw_term = float(ego_yaw_rate_dps) * float(PREDICTION_EGO_YAW_RATE_GAIN)
+    speed_term = float(ego_speed_mps) * float(center_offset) * float(PREDICTION_EGO_SPEED_GAIN)
+    return clamp(yaw_term + speed_term, -PREDICTION_EGO_MAX_OFFSET_VEL, PREDICTION_EGO_MAX_OFFSET_VEL)
+
+
+def update_track_prediction(state, center_offset, center_y_norm, area, current_time, ego_speed_mps=0.0, ego_yaw_rate_dps=0.0):
     kalman_enabled = bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
 
     if not kalman_enabled:
@@ -339,6 +357,7 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
                     d_area = 0.0
 
                 raw_offset_velocity = d_offset / dt
+                raw_offset_velocity -= _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
                 raw_area_velocity = d_area / dt
                 state["track_offset_velocity"] = blend_value(
                     state.get("track_offset_velocity", 0.0),
@@ -418,6 +437,7 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
             else:
                 # Update simple velocity estimates (kept for backward compatibility)
                 raw_offset_velocity = d_offset / dt
+                raw_offset_velocity -= _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
                 raw_area_velocity = d_area / dt
                 state["track_offset_velocity"] = blend_value(
                     state.get("track_offset_velocity", 0.0), raw_offset_velocity, PREDICTION_VELOCITY_ALPHA
@@ -471,6 +491,20 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
     state["predicted_offset"] = predicted_offset
     state["predicted_area"] = predicted_area
     state["prediction_confidence"] = confidence
+
+
+def update_static_track(state, center_offset, center_y_norm, area, current_time):
+    state["kf"] = None
+    state["track_prev_measurement_time"] = current_time
+    state["track_prev_center_offset"] = center_offset
+    state["track_prev_center_y"] = center_y_norm
+    state["track_prev_area"] = area
+    state["track_offset_velocity"] = 0.0
+    state["track_vertical_velocity"] = 0.0
+    state["track_area_velocity"] = 0.0
+    state["predicted_offset"] = center_offset
+    state["predicted_area"] = area
+    state["prediction_confidence"] = 0.0
 
 
 def tcp_camera_receiver_thread(port, stream_name):
@@ -844,7 +878,39 @@ def cv_processing_thread():
                             best_area = blend_value(previous_area, best_area, TRACK_AREA_ALPHA)
 
                         center_y_norm = (center_point[1] / float(height)) if center_point is not None else 0.5
-                        update_track_prediction(state, center_offset, center_y_norm, best_area, current_time)
+                        if role == "front":
+                            if PREDICTION_ENABLE_LEADER_TRAJECTORY:
+                                comm = boat_comm_states.get(boat_side, {})
+                                ego_speed_mps = float(comm.get("speed_mps", 0.0))
+                                ego_yaw_rate_dps = float(comm.get("yaw_rate_dps", 0.0))
+                                update_track_prediction(
+                                    state,
+                                    center_offset,
+                                    center_y_norm,
+                                    best_area,
+                                    current_time,
+                                    ego_speed_mps=ego_speed_mps,
+                                    ego_yaw_rate_dps=ego_yaw_rate_dps,
+                                )
+                            else:
+                                update_static_track(state, center_offset, center_y_norm, best_area, current_time)
+                        else:
+                            if PREDICTION_ENABLE_SIDE_FOLLOWER:
+                                comm = boat_comm_states.get(boat_side, {})
+                                ego_speed_mps = float(comm.get("speed_mps", 0.0))
+                                ego_yaw_rate_dps = float(comm.get("yaw_rate_dps", 0.0))
+                                update_track_prediction(
+                                    state,
+                                    center_offset,
+                                    center_y_norm,
+                                    best_area,
+                                    current_time,
+                                    ego_speed_mps=ego_speed_mps,
+                                    ego_yaw_rate_dps=ego_yaw_rate_dps,
+                                )
+                            else:
+                                # Side follower track: use direct measurement only (no velocity prediction)
+                                update_static_track(state, center_offset, center_y_norm, best_area, current_time)
 
                         state["target_detected"] = True
                         state["target_stale"] = False

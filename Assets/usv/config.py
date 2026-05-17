@@ -186,6 +186,23 @@ PREDICTION_MIN_VERTICAL_STEP = 0.010
 PREDICTION_MIN_AREA_RATIO_STEP = 0.045
 PREDICTION_CONTROL_MIN_CONF = 0.32
 
+# Ego-motion compensation for prediction arrow stability
+# Compensates camera-induced offset motion using own-boat yaw-rate/speed.
+PREDICTION_EGO_COMPENSATION_ENABLE = True
+# Convert own yaw-rate (deg/s) to expected image offset velocity (offset/s)
+PREDICTION_EGO_YAW_RATE_GAIN = 0.0025
+# Convert own speed contribution to expected image offset velocity (offset/s)
+# The speed term is multiplied by current offset magnitude/sign.
+PREDICTION_EGO_SPEED_GAIN = 0.015
+# Clamp ego compensation to avoid over-correction.
+PREDICTION_EGO_MAX_OFFSET_VEL = 0.25
+# If False, side-camera follower tracks will not use predictive velocity dynamics.
+# This avoids false forward/backward arrows from relative follower stop/go and overtakes.
+PREDICTION_ENABLE_SIDE_FOLLOWER = True
+# If False, front-camera leader tracking will not use predictive velocity dynamics.
+# This disables the leader trajectory arrow without changing the rest of control logic.
+PREDICTION_ENABLE_LEADER_TRAJECTORY = True
+
 FRONT_PRIORITY_CONFIDENCE = 0.35
 FRONT_PRIORITY_STALE_SCALE = 0.25
 FRONT_PRIORITY_NO_FRONT_STEER_SCALE = 0.20
