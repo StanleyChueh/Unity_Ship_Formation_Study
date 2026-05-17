@@ -6,6 +6,10 @@ import socket
 import json
 import threading
 import time
+import csv
+import os
+from collections import deque
+from datetime import datetime
 
 import cv2
 
@@ -35,11 +39,256 @@ from .config import (
     LEADER_CONNECTION_POLL_INTERVAL_SEC,
     LEADER_STARTUP_CMD_RETRY_COUNT,
     LEADER_STARTUP_CMD_RETRY_INTERVAL_SEC,
+    PREDICTION_HORIZON_SEC,
 )
 from .control import process_boat_vision_based
 from .helpers import apply_camera_shake, make_status_frame
 from .state import display_frames, frame_lock, runtime_settings, vision_lock, vision_states
 from .vision import cv_processing_thread, tcp_camera_receiver_thread
+
+
+class RunMetricsLogger:
+    def __init__(self, report_interval_sec=5.0):
+        self.report_interval_sec = max(1.0, float(report_interval_sec))
+        self.started_at = time.time()
+        self.last_report_at = self.started_at
+        self.kalman_last_state = None
+        self.kalman_last_time = self.started_at
+        self.kalman_on_time = 0.0
+        self.run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.output_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "experiment_metrics")
+        )
+        self.snapshots_csv_path = os.path.join(self.output_dir, f"run_{self.run_id}_snapshots.csv")
+        self.summary_csv_path = os.path.join(self.output_dir, "run_summaries.csv")
+        self.by_side = {
+            "Left": self._make_side_state(),
+            "Right": self._make_side_state(),
+        }
+        self._ensure_output_files()
+
+    @staticmethod
+    def _make_side_state():
+        return {
+            "samples": 0,
+            "detected": 0,
+            "stale": 0,
+            "steer_delta_sum": 0.0,
+            "throttle_delta_sum": 0.0,
+            "prev_steer": None,
+            "prev_throttle": None,
+            "pred_queue": deque(),
+            "pred_err_sum": 0.0,
+            "pred_err_count": 0,
+            "pred_flip_count": 0,
+            "prev_pred_offset": None,
+            "prev_pred_time": None,
+            "prev_pred_sign": 0,
+        }
+
+    def _ensure_output_files(self):
+        try:
+            os.makedirs(self.output_dir, exist_ok=True)
+            if not os.path.exists(self.snapshots_csv_path):
+                with open(self.snapshots_csv_path, "w", newline="") as f:
+                    w = csv.writer(f)
+                    w.writerow(
+                        [
+                            "run_id",
+                            "elapsed_s",
+                            "kalman_enabled",
+                            "side",
+                            "samples",
+                            "det_rate_pct",
+                            "stale_rate_pct",
+                            "dsteer_mean_abs",
+                            "dthr_mean_abs",
+                            "pred_mae",
+                            "pred_flips",
+                        ]
+                    )
+            if not os.path.exists(self.summary_csv_path):
+                with open(self.summary_csv_path, "w", newline="") as f:
+                    w = csv.writer(f)
+                    w.writerow(
+                        [
+                            "run_id",
+                            "timestamp",
+                            "elapsed_s",
+                            "kalman_on_ratio",
+                            "side",
+                            "samples",
+                            "det_rate_pct",
+                            "stale_rate_pct",
+                            "dsteer_mean_abs",
+                            "dthr_mean_abs",
+                            "pred_mae",
+                            "pred_flips",
+                        ]
+                    )
+        except Exception as e:
+            print(f"[Metrics] WARNING: failed to initialize output files: {e}")
+
+    def update_kalman_state(self, kalman_enabled, now):
+        kalman_enabled = bool(kalman_enabled)
+        if self.kalman_last_state is None:
+            self.kalman_last_state = kalman_enabled
+            self.kalman_last_time = now
+            return
+
+        dt = max(0.0, now - self.kalman_last_time)
+        if self.kalman_last_state:
+            self.kalman_on_time += dt
+        self.kalman_last_state = kalman_enabled
+        self.kalman_last_time = now
+
+    def update(self, side, res, now):
+        if side not in self.by_side or not res:
+            return
+
+        s = self.by_side[side]
+        s["samples"] += 1
+
+        detected = bool(res.get("detected", False))
+        stale = bool(res.get("stale", False))
+        if detected:
+            s["detected"] += 1
+        if stale:
+            s["stale"] += 1
+
+        steer = float(res.get("steer", 0.0))
+        throttle = float(res.get("throttle", 0.0))
+        if s["prev_steer"] is not None:
+            s["steer_delta_sum"] += abs(steer - s["prev_steer"])
+        if s["prev_throttle"] is not None:
+            s["throttle_delta_sum"] += abs(throttle - s["prev_throttle"])
+        s["prev_steer"] = steer
+        s["prev_throttle"] = throttle
+
+        if detected:
+            measured_offset = float(res.get("offset", 0.0))
+
+            while s["pred_queue"] and s["pred_queue"][0][0] <= now:
+                _, pred_offset = s["pred_queue"].popleft()
+                s["pred_err_sum"] += abs(measured_offset - pred_offset)
+                s["pred_err_count"] += 1
+
+            pred_conf = float(res.get("pred_conf", 0.0))
+            pred_offset = float(res.get("pred_offset", measured_offset))
+            if pred_conf > 1e-6:
+                s["pred_queue"].append((now + float(PREDICTION_HORIZON_SEC), pred_offset))
+
+            prev_pred_offset = s["prev_pred_offset"]
+            prev_pred_time = s["prev_pred_time"]
+            if prev_pred_offset is not None and prev_pred_time is not None:
+                dt = now - prev_pred_time
+                if dt > 1e-3:
+                    pred_vel = (pred_offset - prev_pred_offset) / dt
+                    if abs(pred_vel) > 0.01:
+                        sign = 1 if pred_vel > 0 else -1
+                        if s["prev_pred_sign"] != 0 and sign != s["prev_pred_sign"]:
+                            s["pred_flip_count"] += 1
+                        s["prev_pred_sign"] = sign
+
+            s["prev_pred_offset"] = pred_offset
+            s["prev_pred_time"] = now
+
+    def should_report(self, now):
+        if (now - self.last_report_at) >= self.report_interval_sec:
+            self.last_report_at = now
+            return True
+        return False
+
+    def _fmt_side(self, side):
+        s = self.by_side[side]
+        stats = self._compute_side_stats(s)
+        return (
+            f"{side}: det={stats['det_rate_pct']:5.1f}% stale={stats['stale_rate_pct']:5.1f}% "
+            f"Δsteer={stats['dsteer_mean_abs']:5.3f} Δthr={stats['dthr_mean_abs']:5.3f} "
+            f"predMAE={stats['pred_mae']:5.3f} flips={int(stats['pred_flips']):4d}"
+        )
+
+    def _compute_side_stats(self, s):
+        samples = max(1, int(s["samples"]))
+        det_rate = (100.0 * s["detected"]) / samples
+        stale_rate = (100.0 * s["stale"]) / samples
+        steer_smooth = s["steer_delta_sum"] / samples
+        throttle_smooth = s["throttle_delta_sum"] / samples
+        pred_mae = (s["pred_err_sum"] / s["pred_err_count"]) if s["pred_err_count"] > 0 else 0.0
+        return {
+            "samples": int(s["samples"]),
+            "det_rate_pct": det_rate,
+            "stale_rate_pct": stale_rate,
+            "dsteer_mean_abs": steer_smooth,
+            "dthr_mean_abs": throttle_smooth,
+            "pred_mae": pred_mae,
+            "pred_flips": int(s["pred_flip_count"]),
+        }
+
+    def build_report_lines(self, final=False):
+        elapsed = max(1e-6, time.time() - self.started_at)
+        header = "[Metrics-Final]" if final else "[Metrics]"
+        return [
+            f"{header} elapsed={elapsed:6.1f}s",
+            f"{header} {self._fmt_side('Left')}",
+            f"{header} {self._fmt_side('Right')}",
+        ]
+
+    def write_periodic_snapshot(self, now, kalman_enabled):
+        try:
+            elapsed = max(0.0, now - self.started_at)
+            with open(self.snapshots_csv_path, "a", newline="") as f:
+                w = csv.writer(f)
+                for side in ("Left", "Right"):
+                    stats = self._compute_side_stats(self.by_side[side])
+                    w.writerow(
+                        [
+                            self.run_id,
+                            f"{elapsed:.3f}",
+                            int(bool(kalman_enabled)),
+                            side,
+                            stats["samples"],
+                            f"{stats['det_rate_pct']:.6f}",
+                            f"{stats['stale_rate_pct']:.6f}",
+                            f"{stats['dsteer_mean_abs']:.6f}",
+                            f"{stats['dthr_mean_abs']:.6f}",
+                            f"{stats['pred_mae']:.6f}",
+                            stats["pred_flips"],
+                        ]
+                    )
+        except Exception as e:
+            print(f"[Metrics] WARNING: failed to write periodic snapshot: {e}")
+
+    def write_final_summary(self, now):
+        try:
+            self.update_kalman_state(self.kalman_last_state, now)
+            elapsed = max(1e-6, now - self.started_at)
+            kalman_on_ratio = self.kalman_on_time / elapsed
+            timestamp = datetime.now().isoformat(timespec="seconds")
+            with open(self.summary_csv_path, "a", newline="") as f:
+                w = csv.writer(f)
+                for side in ("Left", "Right"):
+                    stats = self._compute_side_stats(self.by_side[side])
+                    w.writerow(
+                        [
+                            self.run_id,
+                            timestamp,
+                            f"{elapsed:.3f}",
+                            f"{kalman_on_ratio:.6f}",
+                            side,
+                            stats["samples"],
+                            f"{stats['det_rate_pct']:.6f}",
+                            f"{stats['stale_rate_pct']:.6f}",
+                            f"{stats['dsteer_mean_abs']:.6f}",
+                            f"{stats['dthr_mean_abs']:.6f}",
+                            f"{stats['pred_mae']:.6f}",
+                            stats["pred_flips"],
+                        ]
+                    )
+            print(f"[Metrics] Saved snapshots: {self.snapshots_csv_path}")
+            print(f"[Metrics] Appended summary: {self.summary_csv_path}")
+        except Exception as e:
+            print(f"[Metrics] WARNING: failed to write final summary: {e}")
 
 
 def _build_udp_socket(port_rx):
@@ -183,6 +432,7 @@ def main():
     t_ui_copy = 0.0
     t_imshow = 0.0
     t_waitkey = 0.0
+    metrics_logger = RunMetricsLogger(report_interval_sec=5.0)
 
     try:
         while True:
@@ -265,6 +515,16 @@ def main():
                 t_waitkey = 0.0
 
             current_time = time.time()
+            kalman_enabled_loop = bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
+            metrics_logger.update_kalman_state(kalman_enabled_loop, current_time)
+            metrics_logger.update("Left", res_left, current_time)
+            metrics_logger.update("Right", res_right, current_time)
+
+            if metrics_logger.should_report(current_time):
+                for line in metrics_logger.build_report_lines(final=False):
+                    print(line)
+                metrics_logger.write_periodic_snapshot(current_time, kalman_enabled_loop)
+
             if current_time - last_print_time > 0.2:
                 print_parts = []
 
@@ -303,6 +563,9 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        metrics_logger.write_final_summary(time.time())
+        for line in metrics_logger.build_report_lines(final=True):
+            print(line)
         if SHOW_WINDOW:
             cv2.destroyAllWindows()
 

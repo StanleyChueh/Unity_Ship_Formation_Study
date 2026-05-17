@@ -1,0 +1,3 @@
+run_id,timestamp,elapsed_s,kalman_on_ratio,side,samples,det_rate_pct,stale_rate_pct,dsteer_mean_abs,dthr_mean_abs,pred_mae,pred_flips
+20260517_223701,2026-05-17T22:38:03,61.571,0.000000,Left,616,97.402597,0.000000,0.016777,0.055509,0.040616,56
+20260517_223701,2026-05-17T22:38:03,61.571,0.000000,Right,611,97.381342,0.000000,0.034728,0.046635,0.050502,41

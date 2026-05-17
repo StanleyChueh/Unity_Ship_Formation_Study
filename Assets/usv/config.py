@@ -198,7 +198,7 @@ PREDICTION_EGO_SPEED_GAIN = 0.015
 PREDICTION_EGO_MAX_OFFSET_VEL = 0.25
 # If False, side-camera follower tracks will not use predictive velocity dynamics.
 # This avoids false forward/backward arrows from relative follower stop/go and overtakes.
-PREDICTION_ENABLE_SIDE_FOLLOWER = True
+PREDICTION_ENABLE_SIDE_FOLLOWER = False
 # If False, front-camera leader tracking will not use predictive velocity dynamics.
 # This disables the leader trajectory arrow without changing the rest of control logic.
 PREDICTION_ENABLE_LEADER_TRAJECTORY = True

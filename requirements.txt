@@ -4,3 +4,4 @@ ultralytics
 torch
 transformers
 Pillow
+matplotlib
