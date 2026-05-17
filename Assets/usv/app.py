@@ -29,6 +29,7 @@ from .config import (
     LEADER_TRAJECTORY_LOOP,
     LEADER_TRAJECTORY_RESET_ON_APPLY,
     LEADER_INITIAL_CONTROL_MODE,
+    LEADER_RX,
     LEADER_WAIT_FOR_FOLLOWER_CONNECTIONS,
     LEADER_CONNECTION_WAIT_TIMEOUT_SEC,
     LEADER_CONNECTION_POLL_INTERVAL_SEC,
@@ -51,8 +52,14 @@ def _build_udp_socket(port_rx):
 def _send_leader_startup_commands():
     send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     mode_cmd = {"cmd": "set_control_mode", "mode": str(LEADER_INITIAL_CONTROL_MODE)}
-    send_sock.sendto(json.dumps(mode_cmd).encode("utf-8"), (UDP_IP, LEADER_AUTO_TRAJECTORY_TX_PORT))
-    print(f"[LeaderCmd] Sent control mode '{LEADER_INITIAL_CONTROL_MODE}' to leader port {LEADER_AUTO_TRAJECTORY_TX_PORT}")
+    # Send to configured leader TX port plus a legacy default port to be robust
+    targets = {LEADER_AUTO_TRAJECTORY_TX_PORT, int(LEADER_RX), 5065}
+    for port in sorted(targets):
+        try:
+            send_sock.sendto(json.dumps(mode_cmd).encode("utf-8"), (UDP_IP, port))
+            print(f"[LeaderCmd] Sent control mode '{LEADER_INITIAL_CONTROL_MODE}' to leader port {port}")
+        except Exception:
+            print(f"[LeaderCmd] Failed sending control mode to port {port}")
 
     # If trajectory is desired and auto-trajectory is enabled, send the trajectory params too.
     if str(LEADER_INITIAL_CONTROL_MODE).lower() == "trajectory" and LEADER_AUTO_TRAJECTORY_ENABLE:
@@ -67,10 +74,42 @@ def _send_leader_startup_commands():
             "loop": bool(LEADER_TRAJECTORY_LOOP),
             "reset": bool(LEADER_TRAJECTORY_RESET_ON_APPLY),
         }
-        send_sock.sendto(json.dumps(cmd).encode("utf-8"), (UDP_IP, LEADER_AUTO_TRAJECTORY_TX_PORT))
-        print(f"[LeaderCmd] Sent trajectory command to leader port {LEADER_AUTO_TRAJECTORY_TX_PORT}")
+        for port in sorted(targets):
+            try:
+                send_sock.sendto(json.dumps(cmd).encode("utf-8"), (UDP_IP, port))
+                print(f"[LeaderCmd] Sent trajectory command to leader port {port}")
+            except Exception:
+                print(f"[LeaderCmd] Failed sending trajectory command to port {port}")
 
     send_sock.close()
+
+    # Write a small startup file so Unity can pick up mode/trajectory even if UDP is missed
+    try:
+        import os as _os
+        path = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", "leader_startup.json"))
+        startup = {}
+        startup["cmd"] = "set_control_mode"
+        startup["mode"] = str(LEADER_INITIAL_CONTROL_MODE)
+        if str(LEADER_INITIAL_CONTROL_MODE).lower() == "trajectory" and LEADER_AUTO_TRAJECTORY_ENABLE:
+            startup = {
+                "cmd": "set_trajectory",
+                "mode": LEADER_TRAJECTORY_MODE,
+                "speed": LEADER_TRAJECTORY_SPEED,
+                "circle_radius": LEADER_TRAJECTORY_CIRCLE_RADIUS,
+                "triangle_side_length": LEADER_TRAJECTORY_TRIANGLE_SIDE,
+                "rectangle_size_x": LEADER_TRAJECTORY_RECT_SIZE[0],
+                "rectangle_size_y": LEADER_TRAJECTORY_RECT_SIZE[1],
+                "loop": bool(LEADER_TRAJECTORY_LOOP),
+                "reset": bool(LEADER_TRAJECTORY_RESET_ON_APPLY),
+            }
+        try:
+            with open(path, "w") as f:
+                json.dump(startup, f)
+            print(f"[LeaderCmd] Wrote startup file for Unity: {path}")
+        except Exception as e:
+            print(f"[LeaderCmd] Failed writing startup file: {e}")
+    except Exception:
+        pass
 
 
 def _wait_for_follower_connections(timeout_sec, poll_interval_sec):

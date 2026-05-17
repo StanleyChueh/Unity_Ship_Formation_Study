@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -15,7 +16,10 @@ public class ShipUDPInterface : MonoBehaviour
     [Header("網路設定")]
     public string pythonIP = "127.0.0.1";
     public int sendPort = 5066;
-    public int receivePort = 5065;
+    // Default receive port changed to match Python's leader RX (5075)
+    // so the Python `set_control_mode` startup command is applied
+    // to the leader without needing to manually flip the inspector.
+    public int receivePort = 5075;
 
     [Header("動力參數")]
     public float moveForce = 20000.0f;
@@ -101,6 +105,87 @@ public class ShipUDPInterface : MonoBehaviour
         spawnRotation = transform.rotation;
         remoteEndPoint = new IPEndPoint(IPAddress.Parse(pythonIP), sendPort);
         udpClient = new UdpClient(receivePort);
+        Debug.Log($"[ShipUDPInterface] Bound UDP receive port: {receivePort}");
+        // Try file-based startup command as a fallback (written by Python)
+        try
+        {
+            string startupPath = Path.Combine(Application.dataPath, "..", "leader_startup.json");
+            if (File.Exists(startupPath))
+            {
+                string text = File.ReadAllText(startupPath);
+                Debug.Log("[ShipUDPInterface] Found startup file: " + startupPath + " -> " + text);
+                try
+                {
+                    ControlModeCommand cmode = JsonUtility.FromJson<ControlModeCommand>(text);
+                    if (cmode != null && (cmode.cmd ?? "") == "set_control_mode")
+                    {
+                        Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
+                        SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
+                        if (sm != null)
+                        {
+                            if ((cmode.mode ?? "").ToLower() == "keyboard")
+                            {
+                                sm.controlMode = SimpleMove.ControlMode.Keyboard;
+                                Debug.Log($"[ShipUDPInterface] Applied startup control mode Keyboard to {targetTransform.name}");
+                            }
+                            else
+                            {
+                                sm.controlMode = SimpleMove.ControlMode.Trajectory;
+                                sm.ResetTrajectory();
+                                Debug.Log($"[ShipUDPInterface] Applied startup control mode Trajectory to {targetTransform.name}");
+                            }
+                        }
+                    }
+
+                    TrajectoryCommand tcmd = JsonUtility.FromJson<TrajectoryCommand>(text);
+                    if (tcmd != null && (tcmd.cmd ?? "") == "set_trajectory")
+                    {
+                        Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
+                        SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
+                        if (sm != null)
+                        {
+                            sm.controlMode = SimpleMove.ControlMode.Trajectory;
+                            switch ((tcmd.mode ?? "").ToLower())
+                            {
+                                case "circle":
+                                    sm.trajectoryMode = SimpleMove.TrajectoryMode.Circle;
+                                    break;
+                                case "triangle":
+                                    sm.trajectoryMode = SimpleMove.TrajectoryMode.Triangle;
+                                    break;
+                                case "rectangle":
+                                    sm.trajectoryMode = SimpleMove.TrajectoryMode.Rectangle;
+                                    break;
+                                default:
+                                    sm.trajectoryMode = SimpleMove.TrajectoryMode.Straight;
+                                    break;
+                            }
+                            if (tcmd.speed > 0f) sm.trajectorySpeed = tcmd.speed;
+                            if (tcmd.circle_radius > 0f) sm.circleRadius = tcmd.circle_radius;
+                            if (tcmd.triangle_side_length > 0f) sm.triangleSideLength = tcmd.triangle_side_length;
+                            if (tcmd.rectangle_size_x > 0f && tcmd.rectangle_size_y > 0f) sm.rectangleSize = new Vector2(tcmd.rectangle_size_x, tcmd.rectangle_size_y);
+                            sm.loopTrajectory = tcmd.loop;
+                            if (tcmd.reset)
+                            {
+                                sm.ResetTrajectory();
+                            }
+                            Debug.Log($"[ShipUDPInterface] Applied startup trajectory to {targetTransform.name}: mode={tcmd.mode} speed={tcmd.speed}");
+                        }
+                    }
+
+                    // Optionally remove the startup file after applying
+                    try { File.Delete(startupPath); }
+                    catch {}
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning("[ShipUDPInterface] Failed to apply startup file: " + ex.Message);
+                }
+            }
+        }
+        catch {}
+        // Also watch for the startup file for a short while in case Python writes it after Start()
+        StartCoroutine(CheckStartupFileCoroutine());
         receiveThread = new Thread(new ThreadStart(ReceiveData));
         receiveThread.IsBackground = true;
         receiveThread.Start();
@@ -117,6 +202,95 @@ public class ShipUDPInterface : MonoBehaviour
         }
 
         ApplyControl();
+    }
+
+    System.Collections.IEnumerator CheckStartupFileCoroutine()
+    {
+        string startupPath = Path.Combine(Application.dataPath, "..", "leader_startup.json");
+        float timeout = 5.0f;
+        float waited = 0f;
+        float interval = 0.5f;
+        while (waited < timeout)
+        {
+            try
+            {
+                if (File.Exists(startupPath))
+                {
+                    string text = File.ReadAllText(startupPath);
+                    Debug.Log("[ShipUDPInterface] Found startup file (coroutine): " + startupPath + " -> " + text);
+                    try
+                    {
+                        ControlModeCommand cmode = JsonUtility.FromJson<ControlModeCommand>(text);
+                        if (cmode != null && (cmode.cmd ?? "") == "set_control_mode")
+                        {
+                            Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
+                            SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
+                            if (sm != null)
+                            {
+                                if ((cmode.mode ?? "").ToLower() == "keyboard")
+                                {
+                                    sm.controlMode = SimpleMove.ControlMode.Keyboard;
+                                    Debug.Log($"[ShipUDPInterface] (coroutine) Applied startup control mode Keyboard to {targetTransform.name}");
+                                }
+                                else
+                                {
+                                    sm.controlMode = SimpleMove.ControlMode.Trajectory;
+                                    sm.ResetTrajectory();
+                                    Debug.Log($"[ShipUDPInterface] (coroutine) Applied startup control mode Trajectory to {targetTransform.name}");
+                                }
+                            }
+                        }
+
+                        TrajectoryCommand tcmd = JsonUtility.FromJson<TrajectoryCommand>(text);
+                        if (tcmd != null && (tcmd.cmd ?? "") == "set_trajectory")
+                        {
+                            Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
+                            SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
+                            if (sm != null)
+                            {
+                                sm.controlMode = SimpleMove.ControlMode.Trajectory;
+                                switch ((tcmd.mode ?? "").ToLower())
+                                {
+                                    case "circle":
+                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Circle;
+                                        break;
+                                    case "triangle":
+                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Triangle;
+                                        break;
+                                    case "rectangle":
+                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Rectangle;
+                                        break;
+                                    default:
+                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Straight;
+                                        break;
+                                }
+                                if (tcmd.speed > 0f) sm.trajectorySpeed = tcmd.speed;
+                                if (tcmd.circle_radius > 0f) sm.circleRadius = tcmd.circle_radius;
+                                if (tcmd.triangle_side_length > 0f) sm.triangleSideLength = tcmd.triangle_side_length;
+                                if (tcmd.rectangle_size_x > 0f && tcmd.rectangle_size_y > 0f) sm.rectangleSize = new Vector2(tcmd.rectangle_size_x, tcmd.rectangle_size_y);
+                                sm.loopTrajectory = tcmd.loop;
+                                if (tcmd.reset)
+                                {
+                                    sm.ResetTrajectory();
+                                }
+                                Debug.Log($"[ShipUDPInterface] (coroutine) Applied startup trajectory to {targetTransform.name}: mode={tcmd.mode} speed={tcmd.speed}");
+                            }
+                        }
+
+                        try { File.Delete(startupPath); } catch {}
+                        yield break;
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning("[ShipUDPInterface] (coroutine) Failed to apply startup file: " + ex.Message);
+                    }
+                }
+            }
+            catch {}
+
+            yield return new WaitForSeconds(interval);
+            waited += interval;
+        }
     }
 
     void Update()
