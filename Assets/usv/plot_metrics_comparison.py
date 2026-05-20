@@ -5,15 +5,17 @@ from datetime import datetime
 from statistics import mean, stdev
 
 import matplotlib.pyplot as plt
+from matplotlib import rcParams
 
 
 METRICS = [
-    ("pred_mae", "Prediction MAE (offset)"),
-    ("pred_flips", "Prediction Flip Count"),
-    ("det_rate_pct", "Detection Rate (%)"),
+    ("leader_det_rate_pct", "Leader Detection Rate (%)"),
+    ("follower_det_rate_pct", "Follower Detection Rate (%)"),
     ("stale_rate_pct", "Stale Rate (%)"),
-    ("dsteer_mean_abs", "Mean |ΔSteer|"),
-    ("dthr_mean_abs", "Mean |ΔThrottle|"),
+    ("dsteer_mean_abs", "Steer Jerkiness (|ΔSteer|/sample)"),
+    ("dthr_mean_abs", "Throttle Jerkiness (|ΔThrottle|/sample)"),
+    ("mean_distance", "Mean Distance (a.u.)"),
+    ("mean_formation_error", "Formation Error (norm.)"),
 ]
 
 
@@ -24,6 +26,21 @@ def classify_kalman(ratio):
         return "Kalman OFF"
     return "Kalman Mixed"
 
+
+# Publication-quality matplotlib defaults
+rcParams.update(
+    {
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "DejaVu Serif"],
+        "font.size": 11,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "legend.fontsize": 10,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "figure.dpi": 220,
+    }
+)
 
 def read_summary_rows(csv_path):
     rows = []
@@ -38,12 +55,15 @@ def read_summary_rows(csv_path):
                     "kalman_on_ratio": float(r["kalman_on_ratio"]),
                     "side": r["side"],
                     "samples": int(r["samples"]),
-                    "det_rate_pct": float(r["det_rate_pct"]),
+                    "leader_det_rate_pct": float(r.get("leader_det_rate_pct", r.get("det_rate_pct", 0.0))),
+                    "follower_det_rate_pct": float(r.get("follower_det_rate_pct", 0.0)),
                     "stale_rate_pct": float(r["stale_rate_pct"]),
                     "dsteer_mean_abs": float(r["dsteer_mean_abs"]),
                     "dthr_mean_abs": float(r["dthr_mean_abs"]),
-                    "pred_mae": float(r["pred_mae"]),
-                    "pred_flips": float(r["pred_flips"]),
+                    "mean_distance": float(r.get("mean_distance", 0.0)),
+                    "min_distance": float(r.get("min_distance", 0.0)),
+                    "mean_formation_error": float(r.get("mean_formation_error", 0.0)),
+                    "near_miss_count": float(r.get("near_miss_count", 0.0)),
                     "kalman_label": classify_kalman(float(r["kalman_on_ratio"])),
                 }
             except Exception:
@@ -68,7 +88,7 @@ def aggregate(rows, metric):
     return stats
 
 
-def plot_metric_grid(rows, out_png):
+def plot_metric_grid(rows, out_base, formats=("png", "pdf", "svg")):
     sides = ["Left", "Right"]
     labels = ["Kalman OFF", "Kalman ON", "Kalman Mixed"]
 
@@ -107,27 +127,31 @@ def plot_metric_grid(rows, out_png):
     fig.legend(handles, legend_labels, loc="upper center", ncol=3)
     fig.suptitle("USV Tracking Metrics Comparison")
     fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(out_png, dpi=220)
+    for fmt in formats:
+        out_path = f"{out_base}.{fmt}"
+        fig.savefig(out_path, dpi=220, bbox_inches="tight")
     plt.close(fig)
 
 
-def plot_pred_mae_vs_kalman(rows, out_png):
+def plot_formation_error_vs_kalman(rows, out_base, formats=("png", "pdf", "svg")):
     side_colors = {"Left": "tab:blue", "Right": "tab:orange"}
     fig, ax = plt.subplots(figsize=(8, 5))
 
     for side in ["Left", "Right"]:
         subset = [r for r in rows if r["side"] == side]
         xs = [r["kalman_on_ratio"] for r in subset]
-        ys = [r["pred_mae"] for r in subset]
+        ys = [r["mean_formation_error"] for r in subset]
         ax.scatter(xs, ys, alpha=0.7, s=35, c=side_colors[side], label=side)
 
     ax.set_xlabel("Kalman ON Ratio (0=OFF, 1=ON)")
-    ax.set_ylabel("Prediction MAE")
-    ax.set_title("Prediction MAE vs Kalman Usage")
+    ax.set_ylabel("Formation Error (norm.)")
+    ax.set_title("Formation Error vs Kalman Usage")
     ax.grid(alpha=0.3)
     ax.legend()
     fig.tight_layout()
-    fig.savefig(out_png, dpi=220)
+    for fmt in formats:
+        out_path = f"{out_base}.{fmt}"
+        fig.savefig(out_path, dpi=220, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -143,6 +167,11 @@ def main():
         default=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "experiment_metrics", "plots")),
         help="Directory to save figures",
     )
+    parser.add_argument(
+        "--formats",
+        default="png,pdf,svg",
+        help="Comma-separated output formats (png,pdf,svg)",
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
@@ -155,14 +184,16 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    out_grid = os.path.join(args.output_dir, f"metrics_comparison_{stamp}.png")
-    out_scatter = os.path.join(args.output_dir, f"pred_mae_vs_kalman_{stamp}.png")
+    fmt_list = [f.strip() for f in args.formats.split(",") if f.strip()]
+    out_base_grid = os.path.join(args.output_dir, f"metrics_comparison_{stamp}")
+    out_base_scatter = os.path.join(args.output_dir, f"formation_error_vs_kalman_{stamp}")
 
-    plot_metric_grid(rows, out_grid)
-    plot_pred_mae_vs_kalman(rows, out_scatter)
+    plot_metric_grid(rows, out_base_grid, formats=fmt_list)
+    plot_formation_error_vs_kalman(rows, out_base_scatter, formats=fmt_list)
 
-    print(f"Saved: {out_grid}")
-    print(f"Saved: {out_scatter}")
+    for fmt in fmt_list:
+        print(f"Saved: {out_base_grid}.{fmt}")
+        print(f"Saved: {out_base_scatter}.{fmt}")
 
 
 if __name__ == "__main__":

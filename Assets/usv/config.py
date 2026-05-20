@@ -91,7 +91,13 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = False
+ENABLE_KALMAN_FILTER = True
+
+# Logging and Metrics Configuration
+# ---------------------------------------------------------
+# Near-miss distance threshold (pixels). If min_distance falls below this,
+# it's counted as a "near-miss" event for safety analysis.
+NEAR_MISS_DISTANCE_THRESHOLD_PX = 30.0
 
 # ---------------------------------------------------------
 # Leader auto-trajectory (for deterministic experiments)
@@ -108,7 +114,7 @@ LEADER_AUTO_TRAJECTORY_TX_PORT = 5075
 LEADER_INITIAL_CONTROL_MODE = "Trajectory"
 # Trajectory selection: "Straight", "Circle", "Triangle", "Rectangle"
 LEADER_TRAJECTORY_MODE = "Circle"
-LEADER_TRAJECTORY_SPEED = 24.0
+LEADER_TRAJECTORY_SPEED = 14.0
 LEADER_TRAJECTORY_CIRCLE_RADIUS = 180.0
 LEADER_TRAJECTORY_TRIANGLE_SIDE = 30.0
 LEADER_TRAJECTORY_RECT_SIZE = (36.0, 22.0)

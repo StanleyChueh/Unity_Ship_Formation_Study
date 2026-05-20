@@ -167,6 +167,32 @@ def compute_visual_far_boost(area, predicted_area, area_velocity, target_opt, me
     return clamp(boost, 0.0, FOLLOW_FAR_MAX_THROTTLE - FOLLOW_BASE_THROTTLE)
 
 
+def compute_distance_from_area(front_area, desired_front_area, yolo_area_opt):
+    """Estimate distance proxy from visual area (normalized).
+    Lower area ≈ farther away; higher area ≈ closer.
+    Returns a pseudo-distance metric (higher = farther).
+    """
+    if front_area <= 0 or yolo_area_opt <= 0:
+        return 0.0
+    # Simple inverse-area metric: distance ∝ 1 / area
+    # Normalized by the optimal area to get pixel units
+    distance = float(yolo_area_opt) / max(float(front_area), 1.0)
+    return distance
+
+
+def compute_formation_error(front_offset, desired_front_offset, front_area, desired_front_area):
+    """Compute formation error as combined offset and area deviation.
+    Offset error: horizontal centering deviation.
+    Area error: distance/scale error.
+    Returns a composite metric (lower = better formation).
+    """
+    offset_error = abs(float(front_offset) - float(desired_front_offset))
+    area_error_ratio = abs(float(front_area) - float(desired_front_area)) / max(float(desired_front_area), 1.0)
+    # Weighted combination (0.6 offset, 0.4 area)
+    formation_error = (0.6 * offset_error) + (0.4 * area_error_ratio)
+    return formation_error
+
+
 def process_boat_vision_based(sock, tx_port, side):
     latest_data = None
     while True:
@@ -497,6 +523,11 @@ def process_boat_vision_based(sock, tx_port, side):
 
     speed_mps = state.get("speed", 0.0)
     leader_speed_mps = state.get("leader_speed", 0.0)
+    
+    # Compute distance and formation error for evaluation
+    distance = compute_distance_from_area(front_area, desired_front_area, YOLO_AREA_OPT) if front_detected else 0.0
+    formation_error = compute_formation_error(front_offset, desired_front_offset, front_area, desired_front_area) if (front_detected and front_visual_ref_ready) else 0.0
+    
     return {
         "detected": front_detected,
         "stale": front_stale,
@@ -519,4 +550,6 @@ def process_boat_vision_based(sock, tx_port, side):
         "side_throttle_bias": side_throttle_bias,
         "speed_knots": speed_mps * 1.94384,
         "leader_speed_knots": leader_speed_mps * 1.94384,
+        "distance": distance,
+        "formation_error": formation_error,
     }

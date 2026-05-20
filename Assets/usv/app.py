@@ -39,6 +39,7 @@ from .config import (
     LEADER_CONNECTION_POLL_INTERVAL_SEC,
     LEADER_STARTUP_CMD_RETRY_COUNT,
     LEADER_STARTUP_CMD_RETRY_INTERVAL_SEC,
+    NEAR_MISS_DISTANCE_THRESHOLD_PX,
     PREDICTION_HORIZON_SEC,
 )
 from .control import process_boat_vision_based
@@ -72,6 +73,8 @@ class RunMetricsLogger:
         return {
             "samples": 0,
             "detected": 0,
+            "leader_detected": 0,
+            "follower_detected": 0,
             "stale": 0,
             "steer_delta_sum": 0.0,
             "throttle_delta_sum": 0.0,
@@ -84,6 +87,21 @@ class RunMetricsLogger:
             "prev_pred_offset": None,
             "prev_pred_time": None,
             "prev_pred_sign": 0,
+            # Control smoothness / saturation
+            "steer_saturated_count": 0,
+            "throttle_saturated_count": 0,
+            "steer_max": 0.0,
+            "throttle_max": 0.0,
+            # Distance / formation tracking
+            "distance_sum": 0.0,
+            "distance_count": 0,
+            "min_distance": float('inf'),
+            # Formation error tracking
+            "formation_error_sum": 0.0,
+            "formation_error_count": 0,
+            # Near-miss tracking (distance below safety threshold)
+            "near_miss_count": 0,
+            "near_miss_threshold": float(NEAR_MISS_DISTANCE_THRESHOLD_PX),
         }
 
     def _ensure_output_files(self):
@@ -99,12 +117,23 @@ class RunMetricsLogger:
                             "kalman_enabled",
                             "side",
                             "samples",
+                            "leader_det_rate_pct",
+                            "follower_det_rate_pct",
                             "det_rate_pct",
                             "stale_rate_pct",
                             "dsteer_mean_abs",
                             "dthr_mean_abs",
                             "pred_mae",
                             "pred_flips",
+                            "steer_saturated_pct",
+                            "throttle_saturated_pct",
+                            "steer_max",
+                            "throttle_max",
+                            "mean_distance",
+                            "min_distance",
+                            "mean_formation_error",
+                            "near_miss_count",
+                            "fps",
                         ]
                     )
             if not os.path.exists(self.summary_csv_path):
@@ -118,12 +147,23 @@ class RunMetricsLogger:
                             "kalman_on_ratio",
                             "side",
                             "samples",
+                            "leader_det_rate_pct",
+                            "follower_det_rate_pct",
                             "det_rate_pct",
                             "stale_rate_pct",
                             "dsteer_mean_abs",
                             "dthr_mean_abs",
                             "pred_mae",
                             "pred_flips",
+                            "steer_saturated_pct",
+                            "throttle_saturated_pct",
+                            "steer_max",
+                            "throttle_max",
+                            "mean_distance",
+                            "min_distance",
+                            "mean_formation_error",
+                            "near_miss_count",
+                            "fps",
                         ]
                     )
         except Exception as e:
@@ -150,20 +190,50 @@ class RunMetricsLogger:
         s["samples"] += 1
 
         detected = bool(res.get("detected", False))
+        side_detected = bool(res.get("side_detected", False))
         stale = bool(res.get("stale", False))
         if detected:
             s["detected"] += 1
+            s["leader_detected"] += 1
+        if side_detected:
+            s["follower_detected"] += 1
         if stale:
             s["stale"] += 1
 
         steer = float(res.get("steer", 0.0))
         throttle = float(res.get("throttle", 0.0))
+        
+        # Track control saturation
+        steer_abs = abs(steer)
+        throttle_abs = abs(throttle)
+        if steer_abs > 0.95:
+            s["steer_saturated_count"] += 1
+        if throttle_abs > 0.95:
+            s["throttle_saturated_count"] += 1
+        s["steer_max"] = max(s["steer_max"], steer_abs)
+        s["throttle_max"] = max(s["throttle_max"], throttle_abs)
+        
         if s["prev_steer"] is not None:
             s["steer_delta_sum"] += abs(steer - s["prev_steer"])
         if s["prev_throttle"] is not None:
             s["throttle_delta_sum"] += abs(throttle - s["prev_throttle"])
         s["prev_steer"] = steer
         s["prev_throttle"] = throttle
+
+        # Track distance and formation error if available
+        if detected:
+            distance = float(res.get("distance", 0.0))
+            formation_error = float(res.get("formation_error", 0.0))
+            if distance > 0:
+                s["distance_sum"] += distance
+                s["distance_count"] += 1
+                s["min_distance"] = min(s["min_distance"], distance)
+                # Track near-miss events (distance below threshold)
+                if distance < s["near_miss_threshold"]:
+                    s["near_miss_count"] += 1
+            if formation_error >= 0:
+                s["formation_error_sum"] += formation_error
+                s["formation_error_count"] += 1
 
         if detected:
             measured_offset = float(res.get("offset", 0.0))
@@ -203,26 +273,45 @@ class RunMetricsLogger:
         s = self.by_side[side]
         stats = self._compute_side_stats(s)
         return (
-            f"{side}: det={stats['det_rate_pct']:5.1f}% stale={stats['stale_rate_pct']:5.1f}% "
+            f"{side}: leader={stats['leader_det_rate_pct']:5.1f}% follower={stats['follower_det_rate_pct']:5.1f}% "
+            f"stale={stats['stale_rate_pct']:5.1f}% "
             f"Δsteer={stats['dsteer_mean_abs']:5.3f} Δthr={stats['dthr_mean_abs']:5.3f} "
             f"predMAE={stats['pred_mae']:5.3f} flips={int(stats['pred_flips']):4d}"
         )
 
     def _compute_side_stats(self, s):
         samples = max(1, int(s["samples"]))
+        leader_det_rate = (100.0 * s["leader_detected"]) / samples
+        follower_det_rate = (100.0 * s["follower_detected"]) / samples
         det_rate = (100.0 * s["detected"]) / samples
         stale_rate = (100.0 * s["stale"]) / samples
         steer_smooth = s["steer_delta_sum"] / samples
         throttle_smooth = s["throttle_delta_sum"] / samples
         pred_mae = (s["pred_err_sum"] / s["pred_err_count"]) if s["pred_err_count"] > 0 else 0.0
+        steer_sat_pct = (100.0 * s["steer_saturated_count"]) / samples
+        throttle_sat_pct = (100.0 * s["throttle_saturated_count"]) / samples
+        mean_distance = (s["distance_sum"] / s["distance_count"]) if s["distance_count"] > 0 else 0.0
+        min_distance = s["min_distance"] if s["min_distance"] != float('inf') else 0.0
+        mean_formation_error = (s["formation_error_sum"] / s["formation_error_count"]) if s["formation_error_count"] > 0 else 0.0
+        
         return {
             "samples": int(s["samples"]),
+            "leader_det_rate_pct": leader_det_rate,
+            "follower_det_rate_pct": follower_det_rate,
             "det_rate_pct": det_rate,
             "stale_rate_pct": stale_rate,
             "dsteer_mean_abs": steer_smooth,
             "dthr_mean_abs": throttle_smooth,
             "pred_mae": pred_mae,
             "pred_flips": int(s["pred_flip_count"]),
+            "steer_saturated_pct": steer_sat_pct,
+            "throttle_saturated_pct": throttle_sat_pct,
+            "steer_max": s["steer_max"],
+            "throttle_max": s["throttle_max"],
+            "mean_distance": mean_distance,
+            "min_distance": min_distance,
+            "mean_formation_error": mean_formation_error,
+            "near_miss_count": int(s["near_miss_count"]),
         }
 
     def build_report_lines(self, final=False):
@@ -234,7 +323,7 @@ class RunMetricsLogger:
             f"{header} {self._fmt_side('Right')}",
         ]
 
-    def write_periodic_snapshot(self, now, kalman_enabled):
+    def write_periodic_snapshot(self, now, kalman_enabled, fps=0.0):
         try:
             elapsed = max(0.0, now - self.started_at)
             with open(self.snapshots_csv_path, "a", newline="") as f:
@@ -248,16 +337,141 @@ class RunMetricsLogger:
                             int(bool(kalman_enabled)),
                             side,
                             stats["samples"],
+                            f"{stats['leader_det_rate_pct']:.6f}",
+                            f"{stats['follower_det_rate_pct']:.6f}",
                             f"{stats['det_rate_pct']:.6f}",
                             f"{stats['stale_rate_pct']:.6f}",
                             f"{stats['dsteer_mean_abs']:.6f}",
                             f"{stats['dthr_mean_abs']:.6f}",
                             f"{stats['pred_mae']:.6f}",
                             stats["pred_flips"],
+                            f"{stats['steer_saturated_pct']:.6f}",
+                            f"{stats['throttle_saturated_pct']:.6f}",
+                            f"{stats['steer_max']:.6f}",
+                            f"{stats['throttle_max']:.6f}",
+                            f"{stats['mean_distance']:.6f}",
+                            f"{stats['min_distance']:.6f}",
+                            f"{stats['mean_formation_error']:.6f}",
+                            stats["near_miss_count"],
+                            f"{fps:.2f}",
                         ]
                     )
         except Exception as e:
             print(f"[Metrics] WARNING: failed to write periodic snapshot: {e}")
+
+    def write_checkpoint(self, now, kalman_enabled, tag=None):
+        """Write a standalone run snapshot + summary using current in-memory stats.
+        This creates a new run_id (timestamped) so checkpoints can be compared
+        as independent runs in post-processing.
+        """
+        try:
+            # generate a standalone run id
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_run_id = f"{stamp}"
+
+            # snapshot file for this checkpoint
+            snapshot_path = os.path.join(self.output_dir, f"run_{new_run_id}_snapshots.csv")
+            summary_path = self.summary_csv_path
+
+            # write snapshot CSV (single entry per side)
+            with open(snapshot_path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(
+                    [
+                        "run_id",
+                        "elapsed_s",
+                        "kalman_enabled",
+                        "side",
+                        "samples",
+                        "leader_det_rate_pct",
+                        "follower_det_rate_pct",
+                        "det_rate_pct",
+                        "stale_rate_pct",
+                        "dsteer_mean_abs",
+                        "dthr_mean_abs",
+                        "pred_mae",
+                        "pred_flips",
+                        "steer_saturated_pct",
+                        "throttle_saturated_pct",
+                        "steer_max",
+                        "throttle_max",
+                        "mean_distance",
+                        "min_distance",
+                        "mean_formation_error",
+                        "near_miss_count",
+                        "fps",
+                    ]
+                )
+                elapsed = max(1e-6, now - self.started_at)
+                for side in ("Left", "Right"):
+                    stats = self._compute_side_stats(self.by_side[side])
+                    w.writerow(
+                        [
+                            new_run_id,
+                            f"{elapsed:.3f}",
+                            int(bool(kalman_enabled)),
+                            side,
+                            stats["samples"],
+                            f"{stats['leader_det_rate_pct']:.6f}",
+                            f"{stats['follower_det_rate_pct']:.6f}",
+                            f"{stats['det_rate_pct']:.6f}",
+                            f"{stats['stale_rate_pct']:.6f}",
+                            f"{stats['dsteer_mean_abs']:.6f}",
+                            f"{stats['dthr_mean_abs']:.6f}",
+                            f"{stats['pred_mae']:.6f}",
+                            stats["pred_flips"],
+                            f"{stats['steer_saturated_pct']:.6f}",
+                            f"{stats['throttle_saturated_pct']:.6f}",
+                            f"{stats['steer_max']:.6f}",
+                            f"{stats['throttle_max']:.6f}",
+                            f"{stats['mean_distance']:.6f}",
+                            f"{stats['min_distance']:.6f}",
+                            f"{stats['mean_formation_error']:.6f}",
+                            stats["near_miss_count"],
+                            "0.0",
+                        ]
+                    )
+
+            # append a summary row to the global summaries CSV so plotting tools can pick it up
+            try:
+                kalman_on_time = float(self.kalman_on_time)
+                kalman_on_ratio = kalman_on_time / max(1e-6, elapsed)
+                timestamp = datetime.now().isoformat(timespec="seconds")
+                with open(summary_path, "a", newline="") as f:
+                    w = csv.writer(f)
+                    for side in ("Left", "Right"):
+                        stats = self._compute_side_stats(self.by_side[side])
+                        w.writerow(
+                            [
+                                new_run_id,
+                                timestamp,
+                                f"{elapsed:.3f}",
+                                f"{kalman_on_ratio:.6f}",
+                                side,
+                                stats["samples"],
+                                f"{stats['det_rate_pct']:.6f}",
+                                f"{stats['stale_rate_pct']:.6f}",
+                                f"{stats['dsteer_mean_abs']:.6f}",
+                                f"{stats['dthr_mean_abs']:.6f}",
+                                f"{stats['pred_mae']:.6f}",
+                                int(stats["pred_flips"]),
+                                f"{stats['steer_saturated_pct']:.6f}",
+                                f"{stats['throttle_saturated_pct']:.6f}",
+                                f"{stats['steer_max']:.6f}",
+                                f"{stats['throttle_max']:.6f}",
+                                f"{stats['mean_distance']:.6f}",
+                                f"{stats['min_distance']:.6f}",
+                                f"{stats['mean_formation_error']:.6f}",
+                                stats["near_miss_count"],
+                                "0.0",
+                            ]
+                        )
+                print(f"[Metrics] Checkpoint saved snapshots: {snapshot_path}")
+                print(f"[Metrics] Checkpoint appended summary: {summary_path} (run_id={new_run_id})")
+            except Exception as e:
+                print(f"[Metrics] WARNING: failed to write checkpoint summary: {e}")
+        except Exception as e:
+            print(f"[Metrics] WARNING: failed to create checkpoint: {e}")
 
     def write_final_summary(self, now):
         try:
@@ -277,12 +491,23 @@ class RunMetricsLogger:
                             f"{kalman_on_ratio:.6f}",
                             side,
                             stats["samples"],
+                            f"{stats['leader_det_rate_pct']:.6f}",
+                            f"{stats['follower_det_rate_pct']:.6f}",
                             f"{stats['det_rate_pct']:.6f}",
                             f"{stats['stale_rate_pct']:.6f}",
                             f"{stats['dsteer_mean_abs']:.6f}",
                             f"{stats['dthr_mean_abs']:.6f}",
                             f"{stats['pred_mae']:.6f}",
                             stats["pred_flips"],
+                            f"{stats['steer_saturated_pct']:.6f}",
+                            f"{stats['throttle_saturated_pct']:.6f}",
+                            f"{stats['steer_max']:.6f}",
+                            f"{stats['throttle_max']:.6f}",
+                            f"{stats['mean_distance']:.6f}",
+                            f"{stats['min_distance']:.6f}",
+                            f"{stats['mean_formation_error']:.6f}",
+                            stats["near_miss_count"],
+                            "0.0",
                         ]
                     )
             print(f"[Metrics] Saved snapshots: {self.snapshots_csv_path}")
@@ -509,6 +734,14 @@ def main():
                     new_value = not bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
                     runtime_settings["enable_kalman_filter"] = new_value
                     print(f"[Kalman] Filter toggled {'ON' if new_value else 'OFF'}")
+                if key in (ord("c"), ord("C")):
+                    # Save an on-demand checkpoint (writes independent run_id summary + snapshot)
+                    now_ck = time.time()
+                    kalman_now = bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
+                    try:
+                        metrics_logger.write_checkpoint(now_ck, kalman_now)
+                    except Exception as e:
+                        print(f"[Metrics] WARNING: failed to write checkpoint: {e}")
                 t_waitkey = time.time() - t0
             else:
                 t_imshow = 0.0
@@ -523,7 +756,10 @@ def main():
             if metrics_logger.should_report(current_time):
                 for line in metrics_logger.build_report_lines(final=False):
                     print(line)
-                metrics_logger.write_periodic_snapshot(current_time, kalman_enabled_loop)
+                # Compute FPS from loop timing
+                loop_dt = max(1e-6, current_time - last_loop_time)
+                fps = 1.0 / loop_dt if loop_dt > 0 else 0.0
+                metrics_logger.write_periodic_snapshot(current_time, kalman_enabled_loop, fps=fps)
 
             if current_time - last_print_time > 0.2:
                 print_parts = []
