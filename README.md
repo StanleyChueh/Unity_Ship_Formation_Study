@@ -15,9 +15,24 @@ pip install -r requirements.txt
 
 # Usage
 
+Run Controller(Keyboard or Trajectory following)
+
 ```bash
 cd Assets
 python usv_controller.py
+```
+
+> **Note**
+> 
+> User can set Control mode to Keyboard or Trajectory following mode in config.py
+> 
+> By setting ```LEADER_INITIAL_CONTROL_MODE = "Trajectory"``` or ```LEADER_INITIAL_CONTROL_MODE = "Keyboard"``` to switch control mode.
+> 
+> Set trajectory mode: ```LEADER_TRAJECTORY_MODE = "Circle"``` or ```LEADER_TRAJECTORY_MODE = "Straight"```
+## Run evaluation matrices
+
+```
+python usv/plot_metrics_comparison.py 
 ```
 
 # Codebase
