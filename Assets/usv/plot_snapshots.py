@@ -44,6 +44,14 @@ def read_snapshots(snapshots_csv):
                     "stale_rate_pct": float(row.get("stale_rate_pct", 0.0)),
                     "dsteer_mean_abs": float(row.get("dsteer_mean_abs", 0.0)),
                     "dthr_mean_abs": float(row.get("dthr_mean_abs", 0.0)),
+                    "steer_cmd_mean": float(row.get("steer_cmd_mean", row.get("last_steer", row.get("steer", 0.0)))),
+                    "steer_cmd_min": float(row.get("steer_cmd_min", row.get("steer_cmd_min", 0.0))),
+                    "steer_cmd_max": float(row.get("steer_cmd_max", row.get("steer_cmd_max", 0.0))),
+                    "steer_cmd_mean_abs": float(row.get("steer_cmd_mean_abs", 0.0)),
+                    "throttle_cmd_mean": float(row.get("throttle_cmd_mean", row.get("last_throttle", row.get("throttle", 0.0)))),
+                    "throttle_cmd_min": float(row.get("throttle_cmd_min", row.get("throttle_cmd_min", 0.0))),
+                    "throttle_cmd_max": float(row.get("throttle_cmd_max", row.get("throttle_cmd_max", 0.0))),
+                    "throttle_cmd_mean_abs": float(row.get("throttle_cmd_mean_abs", 0.0)),
                     "mean_distance": float(row.get("mean_distance", 0.0)),
                     "min_distance": float(row.get("min_distance", 0.0)),
                     "mean_formation_error": float(row.get("mean_formation_error", 0.0)),
@@ -55,9 +63,10 @@ def read_snapshots(snapshots_csv):
     return rows
 
 
-def plot_snapshots(snapshots, run_id, out_base, formats=("pdf", "svg", "png")):
+def plot_snapshots(snapshots, run_id, out_base, formats=("pdf", "svg", "png"), command_detail="simple"):
     """Create a 2x3 grid of time-series plots for Left/Right sides."""
-    fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+    # Expand to 3x3 to include raw control commands
+    fig, axes = plt.subplots(3, 3, figsize=(14, 12))
     
     # Group rows by side
     left_rows = [r for r in snapshots if r["side"] == "Left"]
@@ -70,22 +79,49 @@ def plot_snapshots(snapshots, run_id, out_base, formats=("pdf", "svg", "png")):
         ("mean_formation_error", "Formation Error", "Formation Error (norm.)"),
         ("dsteer_mean_abs", "Steer Jerkiness", "Steer Jerkiness (|ΔSteer|/sample)"),
         ("dthr_mean_abs", "Throttle Jerkiness", "Throttle Jerkiness (|ΔThrottle|/sample)"),
+        ("steer_cmd_mean", "Steer Command", "Command"),
+        ("throttle_cmd_mean", "Throttle Command", "Command"),
     ]
     
     for idx, (metric, title, ylabel) in enumerate(metrics):
         ax = axes.flatten()[idx]
         
-        # Plot Left side
-        if left_rows:
-            xs_left = [r["elapsed_s"] for r in left_rows]
-            ys_left = [r[metric] for r in left_rows]
-            ax.plot(xs_left, ys_left, "o-", label="Left", alpha=0.7, markersize=4)
-        
-        # Plot Right side
-        if right_rows:
-            xs_right = [r["elapsed_s"] for r in right_rows]
-            ys_right = [r[metric] for r in right_rows]
-            ax.plot(xs_right, ys_right, "s-", label="Right", alpha=0.7, markersize=4)
+        # Optional detailed handling for command metrics (min/max band + mean-abs)
+        if metric in ("steer_cmd_mean", "throttle_cmd_mean") and command_detail == "band":
+            key_base = metric.replace("_mean", "")
+
+            # Left
+            if left_rows:
+                xs_left = [r["elapsed_s"] for r in left_rows]
+                ys_left_mean = [r[metric] for r in left_rows]
+                ys_left_min = [r.get(f"{key_base}_min", 0.0) for r in left_rows]
+                ys_left_max = [r.get(f"{key_base}_max", 0.0) for r in left_rows]
+                ys_left_abs = [r.get(f"{key_base}_mean_abs", 0.0) for r in left_rows]
+                ax.plot(xs_left, ys_left_mean, "o-", label="Left mean", alpha=0.8, markersize=4)
+                ax.fill_between(xs_left, ys_left_min, ys_left_max, color="C0", alpha=0.15)
+                ax.plot(xs_left, ys_left_abs, "--", color="C0", label="Left mean-abs", alpha=0.8)
+
+            # Right
+            if right_rows:
+                xs_right = [r["elapsed_s"] for r in right_rows]
+                ys_right_mean = [r[metric] for r in right_rows]
+                ys_right_min = [r.get(f"{key_base}_min", 0.0) for r in right_rows]
+                ys_right_max = [r.get(f"{key_base}_max", 0.0) for r in right_rows]
+                ys_right_abs = [r.get(f"{key_base}_mean_abs", 0.0) for r in right_rows]
+                ax.plot(xs_right, ys_right_mean, "s-", label="Right mean", alpha=0.8, markersize=4)
+                ax.fill_between(xs_right, ys_right_min, ys_right_max, color="C1", alpha=0.12)
+                ax.plot(xs_right, ys_right_abs, "--", color="C1", label="Right mean-abs", alpha=0.8)
+
+        else:
+            # Plot generic metric for Left/Right
+            if left_rows:
+                xs_left = [r["elapsed_s"] for r in left_rows]
+                ys_left = [r[metric] for r in left_rows]
+                ax.plot(xs_left, ys_left, "o-", label="Left", alpha=0.7, markersize=4)
+            if right_rows:
+                xs_right = [r["elapsed_s"] for r in right_rows]
+                ys_right = [r[metric] for r in right_rows]
+                ax.plot(xs_right, ys_right, "s-", label="Right", alpha=0.7, markersize=4)
         
         ax.set_xlabel("Elapsed Time (s)")
         ax.set_ylabel(ylabel)
@@ -93,6 +129,11 @@ def plot_snapshots(snapshots, run_id, out_base, formats=("pdf", "svg", "png")):
         ax.grid(alpha=0.3)
         if idx == 0:
             ax.legend()
+
+    # If there are empty subplots (3x3 grid but only 8 metrics), hide them
+    total_plots = 3 * 3
+    for i in range(len(metrics), total_plots):
+        axes.flatten()[i].set_visible(False)
     
     fig.suptitle(f"Time-Series Metrics: {run_id}")
     fig.tight_layout()
@@ -120,6 +161,12 @@ def main():
         default="pdf,svg,png",
         help="Comma-separated output formats",
     )
+    parser.add_argument(
+        "--command-detail",
+        default="simple",
+        choices=["simple", "band"],
+        help="Command subplot style: simple=Left/Right mean only, band=mean + min/max band + mean-abs",
+    )
     args = parser.parse_args()
     
     if not os.path.exists(args.snapshot):
@@ -139,7 +186,7 @@ def main():
     out_base = os.path.join(args.output_dir, f"snapshots_{run_id}_{stamp}")
     formats = [f.strip() for f in args.formats.split(",") if f.strip()]
     
-    plot_snapshots(snapshots, run_id, out_base, formats=formats)
+    plot_snapshots(snapshots, run_id, out_base, formats=formats, command_detail=args.command_detail)
     for fmt in formats:
         print(f"Saved: {out_base}.{fmt}")
 

@@ -92,6 +92,18 @@ class RunMetricsLogger:
             "throttle_saturated_count": 0,
             "steer_max": 0.0,
             "throttle_max": 0.0,
+            "last_steer": 0.0,
+            "last_throttle": 0.0,
+            "steer_sum": 0.0,
+            "throttle_sum": 0.0,
+            "steer_cmd_min": float('inf'),
+            "steer_cmd_max": float('-inf'),
+            "steer_abs_sum": 0.0,
+            "steer_sq_sum": 0.0,
+            "throttle_cmd_min": float('inf'),
+            "throttle_cmd_max": float('-inf'),
+            "throttle_abs_sum": 0.0,
+            "throttle_sq_sum": 0.0,
             # Distance / formation tracking
             "distance_sum": 0.0,
             "distance_count": 0,
@@ -129,6 +141,14 @@ class RunMetricsLogger:
                             "throttle_saturated_pct",
                             "steer_max",
                             "throttle_max",
+                            "steer_cmd_mean",
+                            "steer_cmd_min",
+                            "steer_cmd_max",
+                            "steer_cmd_mean_abs",
+                            "throttle_cmd_mean",
+                            "throttle_cmd_min",
+                            "throttle_cmd_max",
+                            "throttle_cmd_mean_abs",
                             "mean_distance",
                             "min_distance",
                             "mean_formation_error",
@@ -202,6 +222,21 @@ class RunMetricsLogger:
 
         steer = float(res.get("steer", 0.0))
         throttle = float(res.get("throttle", 0.0))
+
+        # record last commanded values (for snapshot plotting)
+        s["last_steer"] = steer
+        s["last_throttle"] = throttle
+        s["steer_sum"] += steer
+        s["throttle_sum"] += throttle
+        # accumulate min/max/abs/sq for command summaries
+        s["steer_cmd_min"] = min(s.get("steer_cmd_min", float('inf')), steer)
+        s["steer_cmd_max"] = max(s.get("steer_cmd_max", float('-inf')), steer)
+        s["steer_abs_sum"] += abs(steer)
+        s["steer_sq_sum"] += steer * steer
+        s["throttle_cmd_min"] = min(s.get("throttle_cmd_min", float('inf')), throttle)
+        s["throttle_cmd_max"] = max(s.get("throttle_cmd_max", float('-inf')), throttle)
+        s["throttle_abs_sum"] += abs(throttle)
+        s["throttle_sq_sum"] += throttle * throttle
         
         # Track control saturation
         steer_abs = abs(steer)
@@ -293,6 +328,25 @@ class RunMetricsLogger:
         mean_distance = (s["distance_sum"] / s["distance_count"]) if s["distance_count"] > 0 else 0.0
         min_distance = s["min_distance"] if s["min_distance"] != float('inf') else 0.0
         mean_formation_error = (s["formation_error_sum"] / s["formation_error_count"]) if s["formation_error_count"] > 0 else 0.0
+        steer_cmd_mean = (s.get("steer_sum", 0.0) / max(1, int(s.get("samples", 1))))
+        throttle_cmd_mean = (s.get("throttle_sum", 0.0) / max(1, int(s.get("samples", 1))))
+        steer_cmd_min = s.get("steer_cmd_min", float('inf'))
+        steer_cmd_max = s.get("steer_cmd_max", float('-inf'))
+        steer_cmd_mean_abs = (s.get("steer_abs_sum", 0.0) / max(1, int(s.get("samples", 1))))
+        throttle_cmd_min = s.get("throttle_cmd_min", float('inf'))
+        throttle_cmd_max = s.get("throttle_cmd_max", float('-inf'))
+        throttle_cmd_mean_abs = (s.get("throttle_abs_sum", 0.0) / max(1, int(s.get("samples", 1))))
+        # population std (guard against small numerical errors)
+        try:
+            steer_sq_mean = s.get("steer_sq_sum", 0.0) / max(1, int(s.get("samples", 1)))
+            steer_cmd_std = max(0.0, (steer_sq_mean - (steer_cmd_mean ** 2)) ** 0.5)
+        except Exception:
+            steer_cmd_std = 0.0
+        try:
+            thr_sq_mean = s.get("throttle_sq_sum", 0.0) / max(1, int(s.get("samples", 1)))
+            throttle_cmd_std = max(0.0, (thr_sq_mean - (throttle_cmd_mean ** 2)) ** 0.5)
+        except Exception:
+            throttle_cmd_std = 0.0
         
         return {
             "samples": int(s["samples"]),
@@ -311,6 +365,16 @@ class RunMetricsLogger:
             "mean_distance": mean_distance,
             "min_distance": min_distance,
             "mean_formation_error": mean_formation_error,
+            "steer_cmd_mean": steer_cmd_mean,
+            "steer_cmd_min": (0.0 if steer_cmd_min == float('inf') else steer_cmd_min),
+            "steer_cmd_max": (0.0 if steer_cmd_max == float('-inf') else steer_cmd_max),
+            "steer_cmd_mean_abs": steer_cmd_mean_abs,
+            "steer_cmd_std": steer_cmd_std,
+            "throttle_cmd_mean": throttle_cmd_mean,
+            "throttle_cmd_min": (0.0 if throttle_cmd_min == float('inf') else throttle_cmd_min),
+            "throttle_cmd_max": (0.0 if throttle_cmd_max == float('-inf') else throttle_cmd_max),
+            "throttle_cmd_mean_abs": throttle_cmd_mean_abs,
+            "throttle_cmd_std": throttle_cmd_std,
             "near_miss_count": int(s["near_miss_count"]),
         }
 
@@ -349,6 +413,14 @@ class RunMetricsLogger:
                             f"{stats['throttle_saturated_pct']:.6f}",
                             f"{stats['steer_max']:.6f}",
                             f"{stats['throttle_max']:.6f}",
+                            f"{stats['steer_cmd_mean']:.6f}",
+                            f"{stats['steer_cmd_min']:.6f}",
+                            f"{stats['steer_cmd_max']:.6f}",
+                            f"{stats['steer_cmd_mean_abs']:.6f}",
+                            f"{stats['throttle_cmd_mean']:.6f}",
+                            f"{stats['throttle_cmd_min']:.6f}",
+                            f"{stats['throttle_cmd_max']:.6f}",
+                            f"{stats['throttle_cmd_mean_abs']:.6f}",
                             f"{stats['mean_distance']:.6f}",
                             f"{stats['min_distance']:.6f}",
                             f"{stats['mean_formation_error']:.6f}",
@@ -395,6 +467,14 @@ class RunMetricsLogger:
                         "throttle_saturated_pct",
                         "steer_max",
                         "throttle_max",
+                            "steer_cmd_mean",
+                            "steer_cmd_min",
+                            "steer_cmd_max",
+                            "steer_cmd_mean_abs",
+                            "throttle_cmd_mean",
+                            "throttle_cmd_min",
+                            "throttle_cmd_max",
+                            "throttle_cmd_mean_abs",
                         "mean_distance",
                         "min_distance",
                         "mean_formation_error",
@@ -424,6 +504,14 @@ class RunMetricsLogger:
                             f"{stats['throttle_saturated_pct']:.6f}",
                             f"{stats['steer_max']:.6f}",
                             f"{stats['throttle_max']:.6f}",
+                            f"{stats['steer_cmd_mean']:.6f}",
+                            f"{stats['steer_cmd_min']:.6f}",
+                            f"{stats['steer_cmd_max']:.6f}",
+                            f"{stats['steer_cmd_mean_abs']:.6f}",
+                            f"{stats['throttle_cmd_mean']:.6f}",
+                            f"{stats['throttle_cmd_min']:.6f}",
+                            f"{stats['throttle_cmd_max']:.6f}",
+                            f"{stats['throttle_cmd_mean_abs']:.6f}",
                             f"{stats['mean_distance']:.6f}",
                             f"{stats['min_distance']:.6f}",
                             f"{stats['mean_formation_error']:.6f}",
