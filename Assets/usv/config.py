@@ -91,18 +91,18 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = False
+ENABLE_KALMAN_FILTER = True
 
 # Kalman tracker tuning. Higher process noise makes the predictor respond
 # faster to turns; lower measurement noise trusts detections more.
 KF_PROC_POS_VAR = 2.5e-3
 KF_PROC_VEL_VAR = 2.0e-2
-KF_MEAS_OFFSET_VAR = 6.0e-3
-KF_MEAS_AREA_VAR = 6.0
-KF_ADAPTIVE_MOTION_GAIN = 1.5
-KF_ADAPTIVE_RESIDUAL_GAIN = 2.5
+KF_MEAS_OFFSET_VAR = 8.0e-3
+KF_MEAS_AREA_VAR = 12.0
+KF_ADAPTIVE_MOTION_GAIN = 1.2
+KF_ADAPTIVE_RESIDUAL_GAIN = 1.8
 KF_MAX_PROCESS_SCALE = 12.0
-KF_INITIAL_VEL_BLEND = 0.80
+KF_INITIAL_VEL_BLEND = 0.40
 
 # Logging and Metrics Configuration
 # ---------------------------------------------------------
@@ -191,8 +191,8 @@ FAR_VISUAL_FAR_BOOST_MULTIPLIER = 2.0
 # When leader is far, increase pair-catchup boost by this multiplier (clamped to max).
 PAIR_CATCHUP_MULTIPLIER_WHEN_FAR = 1.5
 PREDICTION_HORIZON_SEC = 0.25
-PREDICTION_OFFSET_BLEND = 0.40
-PREDICTION_AREA_BLEND = 0.20
+PREDICTION_OFFSET_BLEND = 0.15
+PREDICTION_AREA_BLEND = 0.0
 PREDICTION_VELOCITY_ALPHA = 0.20
 PREDICTION_STALE_DECAY = 0.88
 PREDICTION_MAX_OFFSET_DELTA = 0.35
@@ -209,7 +209,7 @@ PREDICTION_CONTROL_MIN_CONF = 0.32
 PREDICTION_SIGN_CONSISTENCY_VEL_THRESH = 0.02
 # If KF velocity sign disagrees with measured velocity and
 # prediction confidence < this threshold, reject KF prediction for arrow/control.
-PREDICTION_SIGN_CONSISTENCY_CONF = 0.30
+PREDICTION_SIGN_CONSISTENCY_CONF = 0.60
 
 # Reduce side-prediction blending when the detection method is only FOLLOWER
 # (side-only detection is less reliable for forward/back motion).
@@ -227,7 +227,7 @@ PREDICTION_EGO_SPEED_GAIN = 0.015
 PREDICTION_EGO_MAX_OFFSET_VEL = 0.25
 # If False, side-camera follower tracks will not use predictive velocity dynamics.
 # This keeps side-following more conservative when the follower motion is noisy.
-PREDICTION_ENABLE_SIDE_FOLLOWER = True
+PREDICTION_ENABLE_SIDE_FOLLOWER = False
 # If False, the front-camera leader trajectory arrow is hidden.
 # Kalman state updates still run so the controller can use prediction when enabled.
 PREDICTION_ENABLE_LEADER_TRAJECTORY = False

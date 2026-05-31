@@ -100,10 +100,10 @@ class KalmanFilter:
         # measurement matrix
         H = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]])
         z = np.array([meas_offset, meas_area], dtype=float)
-        R = np.diag([self.meas_offset_var, self.meas_area_var])
 
         residual = z - H.dot(self.x)
-        process_scale = self._adaptive_process_scale(self.last_dt or 0.0, residual=residual)
+        measurement_scale = self._adaptive_measurement_scale(residual)
+        R = np.diag([self.meas_offset_var, self.meas_area_var]) * measurement_scale
 
         S = H.dot(self.P).dot(H.T) + R
         K = self.P.dot(H.T).dot(np.linalg.inv(S))

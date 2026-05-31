@@ -618,6 +618,7 @@ def process_boat_vision_based(sock, tx_port, side):
     
     # Compute distance and formation error for evaluation
     distance = compute_distance_from_area(front_area, desired_front_area, YOLO_AREA_OPT) if front_detected else 0.0
+    target_distance = compute_distance_from_area(desired_front_area, desired_front_area, YOLO_AREA_OPT) if (front_detected and front_visual_ref_ready) else 0.0
     formation_error = compute_formation_error(front_offset, desired_front_offset, front_area, desired_front_area) if (front_detected and front_visual_ref_ready) else 0.0
     
     return {
@@ -643,5 +644,6 @@ def process_boat_vision_based(sock, tx_port, side):
         "speed_knots": speed_mps * 1.94384,
         "leader_speed_knots": leader_speed_mps * 1.94384,
         "distance": distance,
+        "target_distance": target_distance,
         "formation_error": formation_error,
     }

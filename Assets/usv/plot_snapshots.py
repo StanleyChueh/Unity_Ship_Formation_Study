@@ -54,6 +54,7 @@ def read_snapshots(snapshots_csv):
                     "throttle_cmd_mean_abs": float(row.get("throttle_cmd_mean_abs", 0.0)),
                     "mean_distance": float(row.get("mean_distance", 0.0)),
                     "min_distance": float(row.get("min_distance", 0.0)),
+                    "distance_error_mean": float(row.get("distance_error_mean", row.get("mean_distance", 0.0))),
                     "mean_formation_error": float(row.get("mean_formation_error", 0.0)),
                     "pred_mae": float(row.get("pred_mae", 0.0)),
                     "pred_flips": float(row.get("pred_flips", 0.0)),
@@ -94,7 +95,7 @@ def infer_kalman_mode(snapshot_path, snapshots):
 
 def plot_snapshots(snapshots, run_id, out_base, formats=("pdf", "svg", "png"), command_detail="simple"):
     """Create a 2x3 grid of time-series plots for Left/Right sides."""
-    # Expand to 3x3 to include raw control commands and prediction quality
+    # Expand to 3x3 to include raw control commands and the core tracking metrics
     fig, axes = plt.subplots(3, 3, figsize=(14, 12))
     
     # Group rows by side
@@ -104,13 +105,12 @@ def plot_snapshots(snapshots, run_id, out_base, formats=("pdf", "svg", "png"), c
     metrics = [
         ("leader_det_rate_pct", "Leader Detection Rate", "Detection Rate (%)"),
         ("follower_det_rate_pct", "Follower Detection Rate", "Detection Rate (%)"),
-        ("mean_distance", "Mean Distance", "Mean Distance (a.u.)"),
+        ("distance_error_mean", "Distance Error vs Target", "Distance Error (a.u.)"),
         ("mean_formation_error", "Formation Error", "Formation Error (norm.)"),
         ("dsteer_mean_abs", "Steer Jerkiness", "Steer Jerkiness (|ΔSteer|/sample)"),
         ("dthr_mean_abs", "Throttle Jerkiness", "Throttle Jerkiness (|ΔThrottle|/sample)"),
         ("steer_cmd_mean", "Steer Command", "Command"),
         ("throttle_cmd_mean", "Throttle Command", "Command"),
-        ("pred_mae", "Prediction MAE", "MAE (offset units)"),
     ]
     
     for idx, (metric, title, ylabel) in enumerate(metrics):

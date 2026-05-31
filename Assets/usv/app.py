@@ -108,6 +108,8 @@ class RunMetricsLogger:
             "distance_sum": 0.0,
             "distance_count": 0,
             "min_distance": float('inf'),
+            "distance_error_sum": 0.0,
+            "distance_error_count": 0,
             # Formation error tracking
             "formation_error_sum": 0.0,
             "formation_error_count": 0,
@@ -151,6 +153,7 @@ class RunMetricsLogger:
                             "throttle_cmd_mean_abs",
                             "mean_distance",
                             "min_distance",
+                            "distance_error_mean",
                             "mean_formation_error",
                             "near_miss_count",
                             "fps",
@@ -181,6 +184,7 @@ class RunMetricsLogger:
                             "throttle_max",
                             "mean_distance",
                             "min_distance",
+                            "distance_error_mean",
                             "mean_formation_error",
                             "near_miss_count",
                             "fps",
@@ -259,6 +263,7 @@ class RunMetricsLogger:
         if detected:
             distance = float(res.get("distance", 0.0))
             formation_error = float(res.get("formation_error", 0.0))
+            target_distance = float(res.get("target_distance", 0.0))
             if distance > 0:
                 s["distance_sum"] += distance
                 s["distance_count"] += 1
@@ -266,6 +271,9 @@ class RunMetricsLogger:
                 # Track near-miss events (distance below threshold)
                 if distance < s["near_miss_threshold"]:
                     s["near_miss_count"] += 1
+            if distance > 0 and target_distance > 0:
+                s["distance_error_sum"] += abs(distance - target_distance)
+                s["distance_error_count"] += 1
             if formation_error >= 0:
                 s["formation_error_sum"] += formation_error
                 s["formation_error_count"] += 1
@@ -327,6 +335,7 @@ class RunMetricsLogger:
         throttle_sat_pct = (100.0 * s["throttle_saturated_count"]) / samples
         mean_distance = (s["distance_sum"] / s["distance_count"]) if s["distance_count"] > 0 else 0.0
         min_distance = s["min_distance"] if s["min_distance"] != float('inf') else 0.0
+        mean_distance_error = (s["distance_error_sum"] / s["distance_error_count"]) if s["distance_error_count"] > 0 else 0.0
         mean_formation_error = (s["formation_error_sum"] / s["formation_error_count"]) if s["formation_error_count"] > 0 else 0.0
         steer_cmd_mean = (s.get("steer_sum", 0.0) / max(1, int(s.get("samples", 1))))
         throttle_cmd_mean = (s.get("throttle_sum", 0.0) / max(1, int(s.get("samples", 1))))
@@ -364,6 +373,7 @@ class RunMetricsLogger:
             "throttle_max": s["throttle_max"],
             "mean_distance": mean_distance,
             "min_distance": min_distance,
+            "distance_error_mean": mean_distance_error,
             "mean_formation_error": mean_formation_error,
             "steer_cmd_mean": steer_cmd_mean,
             "steer_cmd_min": (0.0 if steer_cmd_min == float('inf') else steer_cmd_min),
@@ -423,6 +433,7 @@ class RunMetricsLogger:
                             f"{stats['throttle_cmd_mean_abs']:.6f}",
                             f"{stats['mean_distance']:.6f}",
                             f"{stats['min_distance']:.6f}",
+                            f"{stats['distance_error_mean']:.6f}",
                             f"{stats['mean_formation_error']:.6f}",
                             stats["near_miss_count"],
                             f"{fps:.2f}",
@@ -477,6 +488,7 @@ class RunMetricsLogger:
                             "throttle_cmd_mean_abs",
                         "mean_distance",
                         "min_distance",
+                            "distance_error_mean",
                         "mean_formation_error",
                         "near_miss_count",
                         "fps",
@@ -514,6 +526,9 @@ class RunMetricsLogger:
                             f"{stats['throttle_cmd_mean_abs']:.6f}",
                             f"{stats['mean_distance']:.6f}",
                             f"{stats['min_distance']:.6f}",
+                            f"{stats['distance_error_mean']:.6f}",
+                                f"{stats['distance_error_mean']:.6f}",
+                            f"{stats['distance_error_mean']:.6f}",
                             f"{stats['mean_formation_error']:.6f}",
                             stats["near_miss_count"],
                             "0.0",

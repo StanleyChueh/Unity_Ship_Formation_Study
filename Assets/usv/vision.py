@@ -501,8 +501,10 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
                     kf.update(center_offset, area)
                     sx = kf.state()
                     if sx is not None:
+                        dt_meas = max(1e-3, current_time - prev_time)
+                        d_offset = center_offset - prev_offset
                         # sign-consistency check (same logic as measurement-time branch)
-                        raw_meas_offset_velocity = (d_offset / dt) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
+                        raw_meas_offset_velocity = (d_offset / dt_meas) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
                         kf_offset_vel = float(sx[1])
                         vel_thresh = float(PREDICTION_SIGN_CONSISTENCY_VEL_THRESH)
                         sign_consistent = True
@@ -1034,6 +1036,8 @@ def cv_processing_thread():
                             state["predicted_offset"] = 0.0
                             state["predicted_area"] = 0.0
                             state["prediction_confidence"] = 0.0
+                            state["kf"] = None
+                            state["kf_rejected"] = False
                             if role == "side":
                                 state["depth_status"] = "Side camera idle"
                             elif depth_estimator is not None and not depth_estimator.available:
