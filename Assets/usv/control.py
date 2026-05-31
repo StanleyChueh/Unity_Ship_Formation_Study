@@ -14,6 +14,8 @@ from .state import boat_comm_states, formation_targets, vision_lock, vision_stat
 
 # Per-side startup lock expiry timestamps (epoch seconds).
 _STARTUP_STEER_LOCK_UNTIL = {"Left": 0.0, "Right": 0.0}
+# Per-side throttle memory for gentle smoothing, especially on the right follower.
+_LAST_THROTTLE = {"Left": 0.0, "Right": 0.0}
 
 
 def _normalize_angle_deg(angle_deg):
@@ -307,6 +309,12 @@ def process_boat_vision_based(sock, tx_port, side):
             0.0,
             1.0,
         )
+        # Reduce blending when side detection method is only FOLLOWER (less reliable)
+        try:
+            if side_method == "FOLLOWER":
+                side_prediction_control_weight *= float(SIDE_PREDICTION_METHOD_BLEND)
+        except Exception:
+            pass
         side_effective_offset = blend_value(
             side_offset,
             side_predicted_offset,
@@ -318,10 +326,44 @@ def process_boat_vision_based(sock, tx_port, side):
             clamp(side_prediction_control_weight * PREDICTION_AREA_BLEND, 0.0, 1.0),
         )
 
+        edge_offset_abs = abs(side_effective_offset)
+        edge_offset = edge_offset_abs >= float(SIDE_EDGE_IGNORE_OFFSET)
+        edge_edge_factor = 0.0
+        if side == "Right":
+            edge_edge_factor = clamp(
+                (edge_offset_abs - float(RIGHT_SIDE_EDGE_RECOVERY_START))
+                / max(1e-5, float(RIGHT_SIDE_EDGE_RECOVERY_END) - float(RIGHT_SIDE_EDGE_RECOVERY_START)),
+                0.0,
+                1.0,
+            )
+        edge_throttle_floor = None
+        right_edge_recovery_gain = 1.0
+        if side == "Right" and edge_edge_factor > 0.0:
+            # Use only the right boat's own motion state to recover more
+            # aggressively when the leader stays near the side-camera border.
+            comm = boat_comm_states.get(side, {})
+            ego_yaw_rate = abs(float(comm.get("yaw_rate_dps", 0.0)))
+            ego_speed = abs(float(comm.get("speed_mps", 0.0)))
+            motion_factor = clamp((ego_yaw_rate / 35.0) + (ego_speed / 2.5), 0.0, 1.0)
+            recovery_factor = clamp(edge_edge_factor * motion_factor, 0.0, 1.0)
+            right_edge_recovery_gain = 1.0 + (float(RIGHT_SIDE_EDGE_RECOVERY_GAIN) - 1.0) * recovery_factor
+            edge_throttle_floor = clamp(
+                float(SEARCH_FORWARD_THROTTLE) * float(RIGHT_SIDE_EDGE_THROTTLE_FLOOR_SCALE) * (0.75 + 0.25 * recovery_factor),
+                0.0,
+                FOLLOW_MAX_THROTTLE * 0.78,
+            )
+
         side_offset_error = side_effective_offset - desired_side_offset
         if abs(side_offset_error) > SIDE_STEER_DEADZONE_H:
             side_steer_bias = clamp(
                 side_offset_error * SIDE_TRACK_STEER_KP * SIDE_TRACK_STEER_SIGN_BY_BOAT[side],
+                -SIDE_TRACK_MAX_STEER_BIAS,
+                SIDE_TRACK_MAX_STEER_BIAS,
+            )
+
+        if side == "Right" and edge_edge_factor > 0.0:
+            side_steer_bias = clamp(
+                side_steer_bias * right_edge_recovery_gain,
                 -SIDE_TRACK_MAX_STEER_BIAS,
                 SIDE_TRACK_MAX_STEER_BIAS,
             )
@@ -521,12 +563,6 @@ def process_boat_vision_based(sock, tx_port, side):
             side_follow_error_ratio = normalize_area_error(side_target_opt, side_effective_area)
             side_follow_shaped = shape_area_error(side_follow_error_ratio)
 
-            # If the target sits very close to the side-camera border, small
-            # centering errors can cause the follower to drop throttle to zero.
-            # Detect that case and enforce a minimum forward throttle so the
-            # follower continues moving and can re-center the leader in view.
-            edge_offset = abs(side_effective_offset) >= float(SIDE_EDGE_IGNORE_OFFSET)
-
             if side_follow_error_ratio <= 0.0:
                 if edge_offset:
                     throttle = float(SEARCH_FORWARD_THROTTLE) * float(SIDE_EDGE_THROTTLE_SCALE)
@@ -540,9 +576,20 @@ def process_boat_vision_based(sock, tx_port, side):
                 else:
                     throttle = clamp(base_throttle, 0.0, FOLLOW_MAX_THROTTLE * 0.78)
 
+            if side == "Right" and edge_edge_factor > 0.0:
+                edge_boost = clamp(0.15 + 0.35 * edge_edge_factor, 0.0, 0.45)
+                throttle = clamp(
+                    blend_value(_LAST_THROTTLE[side], throttle + edge_boost, float(RIGHT_SIDE_THROTTLE_SMOOTH_ALPHA)),
+                    0.0,
+                    FOLLOW_MAX_THROTTLE * 0.82,
+                )
+
             if side_stale:
                 steer *= SIDE_STALE_BIAS_SCALE
                 throttle *= SIDE_STALE_BIAS_SCALE
+
+            if edge_throttle_floor is not None:
+                throttle = max(throttle, edge_throttle_floor)
         elif DISABLE_SEARCH_MODE:
             throttle = 0.0
             steer = 0.0
@@ -554,6 +601,7 @@ def process_boat_vision_based(sock, tx_port, side):
                 steer = lost_search_dir * SEARCH_MODE_STEER
 
     throttle = clamp(throttle, 0.0, throttle_ceiling)
+    _LAST_THROTTLE[side] = throttle
 
     # Keep both followers heading straight during startup window.
     if STARTUP_STEER_LOCK_ENABLE:

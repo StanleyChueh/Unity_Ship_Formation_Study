@@ -91,7 +91,7 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = True
+ENABLE_KALMAN_FILTER = False
 
 # Kalman tracker tuning. Higher process noise makes the predictor respond
 # faster to turns; lower measurement noise trusts detections more.
@@ -203,6 +203,17 @@ PREDICTION_MIN_VERTICAL_STEP = 0.010
 PREDICTION_MIN_AREA_RATIO_STEP = 0.045
 PREDICTION_CONTROL_MIN_CONF = 0.32
 
+# Prediction sign-consistency checks
+# Minimum velocity magnitude to consider for sign check (offset units/sec)
+PREDICTION_SIGN_CONSISTENCY_VEL_THRESH = 0.01
+# If KF velocity sign disagrees with measured velocity and
+# prediction confidence < this threshold, reject KF prediction for arrow/control.
+PREDICTION_SIGN_CONSISTENCY_CONF = 0.18
+
+# Reduce side-prediction blending when the detection method is only FOLLOWER
+# (side-only detection is less reliable for forward/back motion).
+SIDE_PREDICTION_METHOD_BLEND = 0.6
+
 # Ego-motion compensation for prediction arrow stability
 # Compensates camera-induced offset motion using own-boat yaw-rate/speed.
 PREDICTION_EGO_COMPENSATION_ENABLE = True
@@ -265,6 +276,13 @@ VISION_FRONT_AREA_MIN_THROTTLE = 0.08
 # and scale the minimum forward throttle when that happens.
 SIDE_EDGE_IGNORE_OFFSET = 0.80
 SIDE_EDGE_THROTTLE_SCALE = 0.90
+# Right follower-specific edge recovery (boosts recentering when the leader
+# stays near the border in the right side camera).
+RIGHT_SIDE_EDGE_RECOVERY_GAIN = 1.20
+RIGHT_SIDE_EDGE_THROTTLE_FLOOR_SCALE = 0.95
+RIGHT_SIDE_EDGE_RECOVERY_START = 0.62
+RIGHT_SIDE_EDGE_RECOVERY_END = 0.82
+RIGHT_SIDE_THROTTLE_SMOOTH_ALPHA = 0.35
 VISION_FRONT_CRUISE_THROTTLE = 0.18
 VISION_FRONT_CRUISE_STEER_LIMIT = 0.055
 VISION_FRONT_CRUISE_MAX_POSITIVE_RATIO = 0.20

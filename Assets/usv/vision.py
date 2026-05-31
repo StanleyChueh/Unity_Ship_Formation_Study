@@ -431,27 +431,47 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
                     kf.update(center_offset, area)
                     sx = kf.state()
                     if sx is not None:
-                        raw_kf_offset_velocity = float(sx[1]) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
-                        raw_kf_area_velocity = float(sx[3])
-                        state["track_offset_velocity"] = blend_value(
-                            state.get("track_offset_velocity", 0.0),
-                            raw_kf_offset_velocity,
-                            0.75,
-                        )
-                        state["track_area_velocity"] = blend_value(
-                            state.get("track_area_velocity", 0.0),
-                            raw_kf_area_velocity,
-                            0.75,
-                        )
-                        predicted_offset = clamp(
-                            float(sx[0]) + (state["track_offset_velocity"] * PREDICTION_HORIZON_SEC),
-                            -1.0,
-                            1.0,
-                        )
-                        predicted_area = max(
-                            0.0,
-                            float(sx[2]) + (state["track_area_velocity"] * PREDICTION_HORIZON_SEC),
-                        )
+                        # Compute raw measured velocity for sign-consistency check
+                        raw_meas_offset_velocity = (d_offset / dt) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
+                        kf_offset_vel = float(sx[1])
+                        kf_area_vel = float(sx[3])
+
+                        # Determine whether KF velocity sign matches measured velocity
+                        vel_thresh = float(PREDICTION_SIGN_CONSISTENCY_VEL_THRESH)
+                        sign_consistent = True
+                        if abs(raw_meas_offset_velocity) > vel_thresh and abs(kf_offset_vel) > vel_thresh:
+                            sign_consistent = (raw_meas_offset_velocity * kf_offset_vel) >= 0.0
+
+                        # If sign inconsistent and confidence low, reject KF prediction
+                        if not sign_consistent and (cadence_score * motion_score) < float(PREDICTION_SIGN_CONSISTENCY_CONF):
+                            # reject KF contribution this frame
+                            state["kf_rejected"] = True
+                            predicted_offset = clamp(center_offset + state["track_offset_velocity"] * PREDICTION_HORIZON_SEC, -1.0, 1.0)
+                            max_area_delta = max(area, prev_area, 1.0) * PREDICTION_MAX_AREA_DELTA_RATIO
+                            predicted_area = max(0.0, area + clamp(state["track_area_velocity"] * PREDICTION_HORIZON_SEC, -max_area_delta, max_area_delta))
+                        else:
+                            state["kf_rejected"] = False
+                            raw_kf_offset_velocity = kf_offset_vel - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
+                            raw_kf_area_velocity = kf_area_vel
+                            state["track_offset_velocity"] = blend_value(
+                                state.get("track_offset_velocity", 0.0),
+                                raw_kf_offset_velocity,
+                                0.75,
+                            )
+                            state["track_area_velocity"] = blend_value(
+                                state.get("track_area_velocity", 0.0),
+                                raw_kf_area_velocity,
+                                0.75,
+                            )
+                            predicted_offset = clamp(
+                                float(sx[0]) + (state["track_offset_velocity"] * PREDICTION_HORIZON_SEC),
+                                -1.0,
+                                1.0,
+                            )
+                            predicted_area = max(
+                                0.0,
+                                float(sx[2]) + (state["track_area_velocity"] * PREDICTION_HORIZON_SEC),
+                            )
                 except Exception:
                     predicted_offset = clamp(center_offset + state["track_offset_velocity"] * PREDICTION_HORIZON_SEC, -1.0, 1.0)
                     max_area_delta = max(area, prev_area, 1.0) * PREDICTION_MAX_AREA_DELTA_RATIO
@@ -481,25 +501,39 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
                     kf.update(center_offset, area)
                     sx = kf.state()
                     if sx is not None:
-                        state["track_offset_velocity"] = blend_value(
-                            state.get("track_offset_velocity", 0.0),
-                            float(sx[1]) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset),
-                            0.75,
-                        )
-                        state["track_area_velocity"] = blend_value(
-                            state.get("track_area_velocity", 0.0),
-                            float(sx[3]),
-                            0.75,
-                        )
-                        predicted_offset = clamp(
-                            float(sx[0]) + (state["track_offset_velocity"] * PREDICTION_HORIZON_SEC),
-                            -1.0,
-                            1.0,
-                        )
-                        predicted_area = max(
-                            0.0,
-                            float(sx[2]) + (state["track_area_velocity"] * PREDICTION_HORIZON_SEC),
-                        )
+                        # sign-consistency check (same logic as measurement-time branch)
+                        raw_meas_offset_velocity = (d_offset / dt) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
+                        kf_offset_vel = float(sx[1])
+                        vel_thresh = float(PREDICTION_SIGN_CONSISTENCY_VEL_THRESH)
+                        sign_consistent = True
+                        if abs(raw_meas_offset_velocity) > vel_thresh and abs(kf_offset_vel) > vel_thresh:
+                            sign_consistent = (raw_meas_offset_velocity * kf_offset_vel) >= 0.0
+
+                        if not sign_consistent and (state.get("prediction_confidence", 0.0) * PREDICTION_STALE_DECAY) < float(PREDICTION_SIGN_CONSISTENCY_CONF):
+                            state["kf_rejected"] = True
+                            predicted_offset = clamp(center_offset + state["track_offset_velocity"] * PREDICTION_HORIZON_SEC, -1.0, 1.0)
+                            predicted_area = max(0.0, area)
+                        else:
+                            state["kf_rejected"] = False
+                            state["track_offset_velocity"] = blend_value(
+                                state.get("track_offset_velocity", 0.0),
+                                float(sx[1]) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset),
+                                0.75,
+                            )
+                            state["track_area_velocity"] = blend_value(
+                                state.get("track_area_velocity", 0.0),
+                                float(sx[3]),
+                                0.75,
+                            )
+                            predicted_offset = clamp(
+                                float(sx[0]) + (state["track_offset_velocity"] * PREDICTION_HORIZON_SEC),
+                                -1.0,
+                                1.0,
+                            )
+                            predicted_area = max(
+                                0.0,
+                                float(sx[2]) + (state["track_area_velocity"] * PREDICTION_HORIZON_SEC),
+                            )
                 except Exception:
                     pass
 
@@ -1048,9 +1082,9 @@ def cv_processing_thread():
                         cv2.circle(display_frame, center_point, 6, (255, 255, 0), -1)
                         if detection_method == "FUSED":
                             cv2.putText(display_frame, f"FUSED wake={fusion_wake_weight:.2f}", (16, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
-                        if (role == "front" and PREDICTION_ENABLE_LEADER_TRAJECTORY) or (
-                            role == "side" and PREDICTION_ENABLE_SIDE_FOLLOWER
-                        ):
+                        # Only draw arrow when prediction is enabled for this role
+                        # and the Kalman prediction was not rejected for sign inconsistency.
+                        if ((role == "front" and PREDICTION_ENABLE_LEADER_TRAJECTORY) or (role == "side" and PREDICTION_ENABLE_SIDE_FOLLOWER)) and not state.get("kf_rejected", False):
                             draw_prediction_arrow(
                                 display_frame,
                                 center_point,
