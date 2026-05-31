@@ -96,13 +96,13 @@ ENABLE_KALMAN_FILTER = False
 # Kalman tracker tuning. Higher process noise makes the predictor respond
 # faster to turns; lower measurement noise trusts detections more.
 KF_PROC_POS_VAR = 2.5e-3
-KF_PROC_VEL_VAR = 8.0e-2
+KF_PROC_VEL_VAR = 2.0e-2
 KF_MEAS_OFFSET_VAR = 6.0e-3
 KF_MEAS_AREA_VAR = 6.0
-KF_ADAPTIVE_MOTION_GAIN = 2.5
-KF_ADAPTIVE_RESIDUAL_GAIN = 4.0
+KF_ADAPTIVE_MOTION_GAIN = 1.5
+KF_ADAPTIVE_RESIDUAL_GAIN = 2.5
 KF_MAX_PROCESS_SCALE = 12.0
-KF_INITIAL_VEL_BLEND = 0.60
+KF_INITIAL_VEL_BLEND = 0.80
 
 # Logging and Metrics Configuration
 # ---------------------------------------------------------
@@ -190,10 +190,10 @@ SIDE_PRIORITY_SCALE_WHEN_FAR = 0.35
 FAR_VISUAL_FAR_BOOST_MULTIPLIER = 2.0
 # When leader is far, increase pair-catchup boost by this multiplier (clamped to max).
 PAIR_CATCHUP_MULTIPLIER_WHEN_FAR = 1.5
-PREDICTION_HORIZON_SEC = 0.40
-PREDICTION_OFFSET_BLEND = 0.55
-PREDICTION_AREA_BLEND = 0.35
-PREDICTION_VELOCITY_ALPHA = 0.35
+PREDICTION_HORIZON_SEC = 0.25
+PREDICTION_OFFSET_BLEND = 0.40
+PREDICTION_AREA_BLEND = 0.20
+PREDICTION_VELOCITY_ALPHA = 0.20
 PREDICTION_STALE_DECAY = 0.88
 PREDICTION_MAX_OFFSET_DELTA = 0.35
 PREDICTION_MAX_AREA_DELTA_RATIO = 0.45
@@ -205,14 +205,15 @@ PREDICTION_CONTROL_MIN_CONF = 0.32
 
 # Prediction sign-consistency checks
 # Minimum velocity magnitude to consider for sign check (offset units/sec)
-PREDICTION_SIGN_CONSISTENCY_VEL_THRESH = 0.01
+# Minimum velocity magnitude to consider for sign check (offset units/sec)
+PREDICTION_SIGN_CONSISTENCY_VEL_THRESH = 0.02
 # If KF velocity sign disagrees with measured velocity and
 # prediction confidence < this threshold, reject KF prediction for arrow/control.
-PREDICTION_SIGN_CONSISTENCY_CONF = 0.18
+PREDICTION_SIGN_CONSISTENCY_CONF = 0.30
 
 # Reduce side-prediction blending when the detection method is only FOLLOWER
 # (side-only detection is less reliable for forward/back motion).
-SIDE_PREDICTION_METHOD_BLEND = 0.6
+SIDE_PREDICTION_METHOD_BLEND = 0.5
 
 # Ego-motion compensation for prediction arrow stability
 # Compensates camera-induced offset motion using own-boat yaw-rate/speed.
@@ -242,8 +243,8 @@ FRONT_PRIORITY_CONFIDENCE = 0.35
 FRONT_PRIORITY_STALE_SCALE = 0.25
 FRONT_PRIORITY_NO_FRONT_STEER_SCALE = 0.20
 
-SIDE_TRACK_STEER_KP = 0.62
-SIDE_TRACK_MAX_STEER_BIAS = 0.14
+SIDE_TRACK_STEER_KP = 0.50
+SIDE_TRACK_MAX_STEER_BIAS = 0.10
 SIDE_TRACK_MAX_THROTTLE_BIAS = 0.14
 SIDE_TRACK_AREA_GAIN = 0.18
 SIDE_STEER_DEADZONE_H = 0.05
@@ -254,7 +255,7 @@ WAKE_TRACK_STEER_GAIN = 0.90
 WAKE_TRACK_THROTTLE_GAIN = 0.82
 WAKE_TRACK_AREA_BIAS = 0.88
 FOLLOWER_TRACK_STEER_GAIN = 0.70
-FOLLOWER_TRACK_THROTTLE_GAIN = 0.90
+FOLLOWER_TRACK_THROTTLE_GAIN = 0.75
 FOLLOWER_TRACK_AREA_BIAS = 0.84
 FOLLOWER_MOTION_MIN_CONF = 0.10
 FOLLOWER_MOTION_STEER_GAIN = 0.42
@@ -274,7 +275,7 @@ VISION_FRONT_AREA_MIN_THROTTLE = 0.08
 # small offset errors can cause the follower to reduce throttle to zero.
 # These two values help ignore extreme side offsets for throttle decisions
 # and scale the minimum forward throttle when that happens.
-SIDE_EDGE_IGNORE_OFFSET = 0.80
+SIDE_EDGE_IGNORE_OFFSET = 0.90
 SIDE_EDGE_THROTTLE_SCALE = 0.90
 # Right follower-specific edge recovery (boosts recentering when the leader
 # stays near the border in the right side camera).
@@ -282,7 +283,7 @@ RIGHT_SIDE_EDGE_RECOVERY_GAIN = 1.20
 RIGHT_SIDE_EDGE_THROTTLE_FLOOR_SCALE = 0.95
 RIGHT_SIDE_EDGE_RECOVERY_START = 0.62
 RIGHT_SIDE_EDGE_RECOVERY_END = 0.82
-RIGHT_SIDE_THROTTLE_SMOOTH_ALPHA = 0.35
+RIGHT_SIDE_THROTTLE_SMOOTH_ALPHA = 0.60
 VISION_FRONT_CRUISE_THROTTLE = 0.18
 VISION_FRONT_CRUISE_STEER_LIMIT = 0.055
 VISION_FRONT_CRUISE_MAX_POSITIVE_RATIO = 0.20
@@ -318,7 +319,7 @@ STEER_DEADZONE_H = 0.06
 FINAL_STEER_DEADZONE_H = 0.045
 STEER_SLEW_RATE_PER_SEC = 2.4
 SEARCH_MODE_STEER = 0.5
-KV_THROTTLE_P = 0.00018
+KV_THROTTLE_P = 0.00014
 FOLLOW_BASE_THROTTLE = 0.40
 FOLLOW_MAX_THROTTLE = 0.62
 
