@@ -32,7 +32,7 @@ python usv_controller.py
 ## Run evaluation matrices
 
 ```
-python usv/plot_metrics_comparison.py 
+python usv/plot_snapshots.py --snapshot ../experiment_metrics/run_20260531_113548_snapshots.csv
 ```
 
 # Codebase
