@@ -55,6 +55,8 @@ def read_snapshots(snapshots_csv):
                     "mean_distance": float(row.get("mean_distance", 0.0)),
                     "min_distance": float(row.get("min_distance", 0.0)),
                     "mean_formation_error": float(row.get("mean_formation_error", 0.0)),
+                    "pred_mae": float(row.get("pred_mae", 0.0)),
+                    "pred_flips": float(row.get("pred_flips", 0.0)),
                     "near_miss_count": int(row.get("near_miss_count", 0)),
                 }
                 rows.append(row_parsed)
@@ -63,9 +65,36 @@ def read_snapshots(snapshots_csv):
     return rows
 
 
+def infer_kalman_mode(snapshot_path, snapshots):
+    """Infer the Kalman-filter mode for a snapshot run.
+
+    Filename hints take precedence when present so runs can be identified even
+    when the snapshot rows come from a mixed or partial capture.
+    """
+    basename = os.path.basename(snapshot_path).lower()
+    if "without_kalman" in basename:
+        return "Kalman OFF", "kalman_off"
+    if "with_kalman" in basename:
+        return "Kalman ON", "kalman_on"
+
+    kalman_values = [int(row.get("kalman_enabled", 0)) for row in snapshots]
+    if not kalman_values:
+        return "Kalman mode unknown", "kalman_unknown"
+
+    enabled_count = sum(1 for value in kalman_values if value)
+    disabled_count = len(kalman_values) - enabled_count
+    if enabled_count == 0:
+        return "Kalman OFF", "kalman_off"
+    if disabled_count == 0:
+        return "Kalman ON", "kalman_on"
+    if enabled_count >= disabled_count:
+        return "Kalman ON (majority)", "kalman_on_majority"
+    return "Kalman OFF (majority)", "kalman_off_majority"
+
+
 def plot_snapshots(snapshots, run_id, out_base, formats=("pdf", "svg", "png"), command_detail="simple"):
     """Create a 2x3 grid of time-series plots for Left/Right sides."""
-    # Expand to 3x3 to include raw control commands
+    # Expand to 3x3 to include raw control commands and prediction quality
     fig, axes = plt.subplots(3, 3, figsize=(14, 12))
     
     # Group rows by side
@@ -81,6 +110,7 @@ def plot_snapshots(snapshots, run_id, out_base, formats=("pdf", "svg", "png"), c
         ("dthr_mean_abs", "Throttle Jerkiness", "Throttle Jerkiness (|ΔThrottle|/sample)"),
         ("steer_cmd_mean", "Steer Command", "Command"),
         ("throttle_cmd_mean", "Throttle Command", "Command"),
+        ("pred_mae", "Prediction MAE", "MAE (offset units)"),
     ]
     
     for idx, (metric, title, ylabel) in enumerate(metrics):
@@ -175,6 +205,8 @@ def main():
     snapshots = read_snapshots(args.snapshot)
     if not snapshots:
         raise RuntimeError("No valid rows found in snapshot CSV.")
+
+    kalman_mode_label, kalman_mode_slug = infer_kalman_mode(args.snapshot, snapshots)
     
     os.makedirs(args.output_dir, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -183,10 +215,16 @@ def main():
     basename = os.path.basename(args.snapshot)  # e.g., run_20260520_093039_snapshots.csv
     run_id = basename.replace("run_", "").replace("_snapshots.csv", "")
     
-    out_base = os.path.join(args.output_dir, f"snapshots_{run_id}_{stamp}")
+    out_base = os.path.join(args.output_dir, f"snapshots_{kalman_mode_slug}_{run_id}_{stamp}")
     formats = [f.strip() for f in args.formats.split(",") if f.strip()]
     
-    plot_snapshots(snapshots, run_id, out_base, formats=formats, command_detail=args.command_detail)
+    plot_snapshots(
+        snapshots,
+        f"{run_id} · {kalman_mode_label}",
+        out_base,
+        formats=formats,
+        command_detail=args.command_detail,
+    )
     for fmt in formats:
         print(f"Saved: {out_base}.{fmt}")
 

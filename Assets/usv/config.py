@@ -93,6 +93,17 @@ YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
 ENABLE_KALMAN_FILTER = True
 
+# Kalman tracker tuning. Higher process noise makes the predictor respond
+# faster to turns; lower measurement noise trusts detections more.
+KF_PROC_POS_VAR = 2.5e-3
+KF_PROC_VEL_VAR = 8.0e-2
+KF_MEAS_OFFSET_VAR = 6.0e-3
+KF_MEAS_AREA_VAR = 6.0
+KF_ADAPTIVE_MOTION_GAIN = 2.5
+KF_ADAPTIVE_RESIDUAL_GAIN = 4.0
+KF_MAX_PROCESS_SCALE = 12.0
+KF_INITIAL_VEL_BLEND = 0.60
+
 # Logging and Metrics Configuration
 # ---------------------------------------------------------
 # Near-miss distance threshold (pixels). If min_distance falls below this,
@@ -203,11 +214,18 @@ PREDICTION_EGO_SPEED_GAIN = 0.015
 # Clamp ego compensation to avoid over-correction.
 PREDICTION_EGO_MAX_OFFSET_VEL = 0.25
 # If False, side-camera follower tracks will not use predictive velocity dynamics.
-# This avoids false forward/backward arrows from relative follower stop/go and overtakes.
-PREDICTION_ENABLE_SIDE_FOLLOWER = False
-# If False, front-camera leader tracking will not use predictive velocity dynamics.
-# This disables the leader trajectory arrow without changing the rest of control logic.
+# This keeps side-following more conservative when the follower motion is noisy.
+PREDICTION_ENABLE_SIDE_FOLLOWER = True
+# If False, the front-camera leader trajectory arrow is hidden.
+# Kalman state updates still run so the controller can use prediction when enabled.
 PREDICTION_ENABLE_LEADER_TRAJECTORY = False
+
+# When side camera loses the leader bbox, allow using the predicted
+# trajectory (from Kalman or velocity extrapolation) for a short window
+# to continue side-following. Tune these if prediction causes false chase.
+SIDE_PREDICTION_FOLLOW_ENABLE = True
+SIDE_PREDICTION_MAX_LOST_SEC = 1.5
+SIDE_PREDICTION_MIN_CONF = 0.20
 
 FRONT_PRIORITY_CONFIDENCE = 0.35
 FRONT_PRIORITY_STALE_SCALE = 0.25
@@ -240,6 +258,13 @@ VISION_FRONT_AREA_TOLERANCE_RATIO = 0.14
 VISION_SIDE_AREA_TOLERANCE_RATIO = 0.16
 VISION_FRONT_AREA_GAIN = 0.72
 VISION_FRONT_AREA_MIN_THROTTLE = 0.08
+
+# When the tracked leader sits very close to the side-camera image border,
+# small offset errors can cause the follower to reduce throttle to zero.
+# These two values help ignore extreme side offsets for throttle decisions
+# and scale the minimum forward throttle when that happens.
+SIDE_EDGE_IGNORE_OFFSET = 0.80
+SIDE_EDGE_THROTTLE_SCALE = 0.90
 VISION_FRONT_CRUISE_THROTTLE = 0.18
 VISION_FRONT_CRUISE_STEER_LIMIT = 0.055
 VISION_FRONT_CRUISE_MAX_POSITIVE_RATIO = 0.20
@@ -264,6 +289,12 @@ FOLLOWER_PAIR_CATCHUP_MAX = 0.14
 # =========================================================
 # Controller params
 # =========================================================
+# Startup steering lock (helps Right follower launch straight before side/front
+# stabilization fully settles). When enabled, Right follower steering command
+# is forced to zero for the initial lock window after control starts.
+STARTUP_STEER_LOCK_ENABLE = True
+STARTUP_STEER_LOCK_SEC = 2.0
+
 KV_STEER = 1.02
 STEER_DEADZONE_H = 0.06
 FINAL_STEER_DEADZONE_H = 0.045
@@ -292,11 +323,11 @@ FUSION_MIN_WAKE_WEIGHT = 0.08
 PREDICTION_ARROW_MIN_CONF = 0.12
 PREDICTION_ARROW_PIXELS = 90
 PREDICTION_ARROW_MIN_PIXELS = 18
-SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": 1.0}
+SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": -1.0}
 
 # Camera shake
 ENABLE_CAMERA_SHAKE = True
-CAMERA_SHAKE_SPEED_GAIN = 20.0
+CAMERA_SHAKE_SPEED_GAIN = 2.0
 CAMERA_WAVE_FREQ = 0.6
 CAMERA_WAVE_AMP_BASE = 3.0
 CAMERA_WAVE_AMP_SPEED_GAIN = 15.0

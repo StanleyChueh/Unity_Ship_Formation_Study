@@ -405,14 +405,6 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
     if prev_time > 0.0:
         dt = current_time - prev_time
         if 1e-3 < dt <= 1.0:
-            # Kalman predict step
-            if kf is not None:
-                try:
-                    kf.predict(dt)
-                except Exception:
-                    pass
-
-            # compute simple motion metrics for confidence (aligns with previous logic)
             prev_offset = state.get("track_prev_center_offset", center_offset)
             prev_area = state.get("track_prev_area", area)
             d_offset = center_offset - prev_offset
@@ -429,57 +421,85 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
             area_motion = clamp(area_ratio_step / 0.30, 0.0, 1.0)
             motion_score = max(offset_motion, area_motion)
 
-            if motion_score <= 1e-4:
-                # idle: no meaningful motion
-                state["track_offset_velocity"] *= PREDICTION_IDLE_DECAY
-                state["track_area_velocity"] *= PREDICTION_IDLE_DECAY
-                confidence = 0.0
-            else:
-                # Update simple velocity estimates (kept for backward compatibility)
-                raw_offset_velocity = d_offset / dt
-                raw_offset_velocity -= _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
-                raw_area_velocity = d_area / dt
-                state["track_offset_velocity"] = blend_value(
-                    state.get("track_offset_velocity", 0.0), raw_offset_velocity, PREDICTION_VELOCITY_ALPHA
-                )
-                state["track_area_velocity"] = blend_value(
-                    state.get("track_area_velocity", 0.0), raw_area_velocity, PREDICTION_VELOCITY_ALPHA
-                )
+            cadence_score = clamp(1.0 - abs(dt - 0.1) / 0.4, 0.0, 1.0)
 
-                # Kalman update with measurement
-                if kf is not None:
-                    try:
-                        kf.update(center_offset, area)
-                        sx = kf.state()
-                        if sx is not None:
-                            predicted_offset = sx[0]
-                            predicted_area = sx[2]
-                    except Exception:
-                        predicted_offset = clamp(center_offset + state["track_offset_velocity"] * PREDICTION_HORIZON_SEC, -1.0, 1.0)
-                        max_area_delta = max(area, prev_area, 1.0) * PREDICTION_MAX_AREA_DELTA_RATIO
-                        predicted_area = max(0.0, area + clamp(state["track_area_velocity"] * PREDICTION_HORIZON_SEC, -max_area_delta, max_area_delta))
-                else:
-                    # fallback to previous predictive approach
+            if kf is not None:
+                try:
+                    if hasattr(kf, "set_last_dt"):
+                        kf.set_last_dt(dt)
+                    kf.predict(dt)
+                    kf.update(center_offset, area)
+                    sx = kf.state()
+                    if sx is not None:
+                        raw_kf_offset_velocity = float(sx[1]) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
+                        raw_kf_area_velocity = float(sx[3])
+                        state["track_offset_velocity"] = blend_value(
+                            state.get("track_offset_velocity", 0.0),
+                            raw_kf_offset_velocity,
+                            0.75,
+                        )
+                        state["track_area_velocity"] = blend_value(
+                            state.get("track_area_velocity", 0.0),
+                            raw_kf_area_velocity,
+                            0.75,
+                        )
+                        predicted_offset = clamp(
+                            float(sx[0]) + (state["track_offset_velocity"] * PREDICTION_HORIZON_SEC),
+                            -1.0,
+                            1.0,
+                        )
+                        predicted_area = max(
+                            0.0,
+                            float(sx[2]) + (state["track_area_velocity"] * PREDICTION_HORIZON_SEC),
+                        )
+                except Exception:
                     predicted_offset = clamp(center_offset + state["track_offset_velocity"] * PREDICTION_HORIZON_SEC, -1.0, 1.0)
                     max_area_delta = max(area, prev_area, 1.0) * PREDICTION_MAX_AREA_DELTA_RATIO
                     predicted_area = max(0.0, area + clamp(state["track_area_velocity"] * PREDICTION_HORIZON_SEC, -max_area_delta, max_area_delta))
 
-                cadence_score = clamp(1.0 - abs(dt - 0.1) / 0.4, 0.0, 1.0)
+            if motion_score <= 1e-4:
+                state["track_offset_velocity"] *= PREDICTION_IDLE_DECAY
+                state["track_area_velocity"] *= PREDICTION_IDLE_DECAY
+                confidence = cadence_score * 0.15
+            else:
                 confidence = cadence_score * motion_score
+            # Keep a small confidence floor when Kalman is active so the smoother
+            # actually contributes to control instead of being gated out.
+            if kf is not None:
+                confidence = max(confidence, 0.15)
         else:
             # stale timing: decay velocities and confidence
             state["track_offset_velocity"] *= PREDICTION_STALE_DECAY
             state["track_area_velocity"] *= PREDICTION_STALE_DECAY
             confidence = state.get("prediction_confidence", 0.0) * PREDICTION_STALE_DECAY
-            # allow Kalman to predict forward if present
             if kf is not None:
                 try:
                     dt = min(max(0.0, current_time - prev_time), 1.0)
+                    if hasattr(kf, "set_last_dt"):
+                        kf.set_last_dt(dt)
                     kf.predict(dt)
+                    kf.update(center_offset, area)
                     sx = kf.state()
                     if sx is not None:
-                        predicted_offset = sx[0]
-                        predicted_area = sx[2]
+                        state["track_offset_velocity"] = blend_value(
+                            state.get("track_offset_velocity", 0.0),
+                            float(sx[1]) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset),
+                            0.75,
+                        )
+                        state["track_area_velocity"] = blend_value(
+                            state.get("track_area_velocity", 0.0),
+                            float(sx[3]),
+                            0.75,
+                        )
+                        predicted_offset = clamp(
+                            float(sx[0]) + (state["track_offset_velocity"] * PREDICTION_HORIZON_SEC),
+                            -1.0,
+                            1.0,
+                        )
+                        predicted_area = max(
+                            0.0,
+                            float(sx[2]) + (state["track_area_velocity"] * PREDICTION_HORIZON_SEC),
+                        )
                 except Exception:
                     pass
 
@@ -879,21 +899,18 @@ def cv_processing_thread():
 
                         center_y_norm = (center_point[1] / float(height)) if center_point is not None else 0.5
                         if role == "front":
-                            if PREDICTION_ENABLE_LEADER_TRAJECTORY:
-                                comm = boat_comm_states.get(boat_side, {})
-                                ego_speed_mps = float(comm.get("speed_mps", 0.0))
-                                ego_yaw_rate_dps = float(comm.get("yaw_rate_dps", 0.0))
-                                update_track_prediction(
-                                    state,
-                                    center_offset,
-                                    center_y_norm,
-                                    best_area,
-                                    current_time,
-                                    ego_speed_mps=ego_speed_mps,
-                                    ego_yaw_rate_dps=ego_yaw_rate_dps,
-                                )
-                            else:
-                                update_static_track(state, center_offset, center_y_norm, best_area, current_time)
+                            comm = boat_comm_states.get(boat_side, {})
+                            ego_speed_mps = float(comm.get("speed_mps", 0.0))
+                            ego_yaw_rate_dps = float(comm.get("yaw_rate_dps", 0.0))
+                            update_track_prediction(
+                                state,
+                                center_offset,
+                                center_y_norm,
+                                best_area,
+                                current_time,
+                                ego_speed_mps=ego_speed_mps,
+                                ego_yaw_rate_dps=ego_yaw_rate_dps,
+                            )
                         else:
                             if PREDICTION_ENABLE_SIDE_FOLLOWER:
                                 comm = boat_comm_states.get(boat_side, {})
@@ -1031,7 +1048,16 @@ def cv_processing_thread():
                         cv2.circle(display_frame, center_point, 6, (255, 255, 0), -1)
                         if detection_method == "FUSED":
                             cv2.putText(display_frame, f"FUSED wake={fusion_wake_weight:.2f}", (16, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
-                        draw_prediction_arrow(display_frame, center_point, overlay_offset_velocity, overlay_vertical_velocity, overlay_prediction_conf)
+                        if (role == "front" and PREDICTION_ENABLE_LEADER_TRAJECTORY) or (
+                            role == "side" and PREDICTION_ENABLE_SIDE_FOLLOWER
+                        ):
+                            draw_prediction_arrow(
+                                display_frame,
+                                center_point,
+                                overlay_offset_velocity,
+                                overlay_vertical_velocity,
+                                overlay_prediction_conf,
+                            )
                     else:
                         time_since_seen = current_time - prev_state.get("last_detection_time", 0.0)
                         if prev_state.get("last_known_method") is not None and time_since_seen <= TRACK_HOLD_SEC:
