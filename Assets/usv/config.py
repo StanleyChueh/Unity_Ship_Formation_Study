@@ -91,7 +91,7 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = False
+ENABLE_KALMAN_FILTER = True
 
 # Kalman tracker tuning. Higher process noise makes the predictor respond
 # faster to turns; lower measurement noise trusts detections more.
