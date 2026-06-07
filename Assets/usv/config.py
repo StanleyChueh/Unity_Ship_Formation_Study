@@ -92,6 +92,9 @@ YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
 ENABLE_KALMAN_FILTER = True
+# If False, side-camera detections/predictions are ignored by the controller.
+# Set this in `config.py` to disable side-camera usage at startup.
+ENABLE_SIDE_DETECTION = False
 
 # Startup synchronization for repeatable experiments.
 # When enabled, both followers keep outputting zero command until startup
@@ -108,13 +111,13 @@ SYNC_FOLLOWER_STARTUP_PACKET_STALE_SEC = 0.50
 # Kalman tracker tuning. Higher process noise makes the predictor respond
 # faster to turns; lower measurement noise trusts detections more.
 KF_PROC_POS_VAR = 2.5e-3
-KF_PROC_VEL_VAR = 2.0e-2
+KF_PROC_VEL_VAR = 8.0e-2
 KF_MEAS_OFFSET_VAR = 8.0e-3
-KF_MEAS_AREA_VAR = 12.0
+KF_MEAS_AREA_VAR = 12.0 #12.0
 KF_ADAPTIVE_MOTION_GAIN = 1.2
 KF_ADAPTIVE_RESIDUAL_GAIN = 1.8
 KF_MAX_PROCESS_SCALE = 12.0
-KF_INITIAL_VEL_BLEND = 0.40
+KF_INITIAL_VEL_BLEND = 0.35
 
 # Logging and Metrics Configuration
 # ---------------------------------------------------------
@@ -137,7 +140,7 @@ LEADER_AUTO_TRAJECTORY_TX_PORT = 5075
 LEADER_INITIAL_CONTROL_MODE = "Trajectory"
 # Trajectory selection: "Straight", "Circle", "Triangle", "Rectangle"
 LEADER_TRAJECTORY_MODE = "Circle"
-LEADER_TRAJECTORY_SPEED = 18.0 #14.0
+LEADER_TRAJECTORY_SPEED = 18.0 #18.0
 LEADER_TRAJECTORY_SPEED_RAMP_ENABLE = True
 LEADER_TRAJECTORY_ACCELERATION = 4.0
 LEADER_TRAJECTORY_INITIAL_SPEED = 0.0
@@ -228,6 +231,9 @@ PREDICTION_MIN_VERTICAL_STEP = 0.010
 PREDICTION_MIN_AREA_RATIO_STEP = 0.045
 PREDICTION_CONTROL_MIN_CONF = 0.32
 
+# How many consecutive frames area must exceed target_max before zeroing throttle
+AREA_PERSISTENCE_FRAMES = 3
+
 # Prediction sign-consistency checks
 # Minimum velocity magnitude to consider for sign check (offset units/sec)
 # Minimum velocity magnitude to consider for sign check (offset units/sec)
@@ -252,7 +258,7 @@ PREDICTION_EGO_SPEED_GAIN = 0.015
 PREDICTION_EGO_MAX_OFFSET_VEL = 0.25
 # If False, side-camera follower tracks will not use predictive velocity dynamics.
 # This keeps side-following more conservative when the follower motion is noisy.
-PREDICTION_ENABLE_SIDE_FOLLOWER = False
+PREDICTION_ENABLE_SIDE_FOLLOWER = True
 # If False, the front-camera leader trajectory arrow is hidden.
 # Kalman state updates still run so the controller can use prediction when enabled.
 PREDICTION_ENABLE_LEADER_TRAJECTORY = False
@@ -261,8 +267,8 @@ PREDICTION_ENABLE_LEADER_TRAJECTORY = False
 # trajectory (from Kalman or velocity extrapolation) for a short window
 # to continue side-following. Tune these if prediction causes false chase.
 SIDE_PREDICTION_FOLLOW_ENABLE = True
-SIDE_PREDICTION_MAX_LOST_SEC = 1.5
-SIDE_PREDICTION_MIN_CONF = 0.20
+SIDE_PREDICTION_MAX_LOST_SEC = 1.0 #1.5
+SIDE_PREDICTION_MIN_CONF = 0.3 #0.2
 # Side-camera target policy:
 # - "dual": use follower for spacing when visible, while also biasing steering
 #   with leader position to keep the leader inside the side-camera view
@@ -325,7 +331,7 @@ RIGHT_SIDE_EDGE_RECOVERY_GAIN = 1.20
 RIGHT_SIDE_EDGE_THROTTLE_FLOOR_SCALE = 0.95
 RIGHT_SIDE_EDGE_RECOVERY_START = 0.62
 RIGHT_SIDE_EDGE_RECOVERY_END = 0.82
-RIGHT_SIDE_THROTTLE_SMOOTH_ALPHA = 0.60
+RIGHT_SIDE_THROTTLE_SMOOTH_ALPHA = 0.80
 VISION_FRONT_CRUISE_THROTTLE = 0.18
 VISION_FRONT_CRUISE_STEER_LIMIT = 0.055
 VISION_FRONT_CRUISE_MAX_POSITIVE_RATIO = 0.20

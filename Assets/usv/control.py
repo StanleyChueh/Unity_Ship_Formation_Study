@@ -6,6 +6,9 @@
 import json
 import math
 import time
+import csv
+import os
+from datetime import datetime
 
 from .config import *
 from .helpers import blend_value, clamp, filter_steer_command, get_peer_boat_side
@@ -16,6 +19,43 @@ from .state import boat_comm_states, formation_targets, runtime_settings, vision
 _STARTUP_STEER_LOCK_UNTIL = {"Left": 0.0, "Right": 0.0}
 # Per-side throttle memory for gentle smoothing, especially on the right follower.
 _LAST_THROTTLE = {"Left": 0.0, "Right": 0.0}
+
+# Persistence counter to avoid single-frame area spikes zeroing throttle
+_AREA_OVER_MAX_COUNT = {"Left": 0, "Right": 0}
+
+# Debug logging (Right follower)
+_DEBUG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "experiment_metrics"))
+_RIGHT_DEBUG_PATH = os.path.join(_DEBUG_DIR, "right_debug.csv")
+
+def _log_right_debug(side, current_time, front_area, effective_area, predicted_area, pred_conf, front_stale, side_detected, side_pred_conf, edge_edge_factor, last_throttle, throttle):
+    if side != "Right":
+        return
+    try:
+        os.makedirs(_DEBUG_DIR, exist_ok=True)
+        write_header = not os.path.exists(_RIGHT_DEBUG_PATH)
+        with open(_RIGHT_DEBUG_PATH, "a", newline="") as f:
+            w = csv.writer(f)
+            if write_header:
+                w.writerow([
+                    "time", "elapsed_s", "front_area", "effective_area", "predicted_area", "pred_conf", "front_stale", "side_detected", "side_pred_conf", "edge_edge_factor", "last_throttle", "throttle"
+                ])
+            elapsed = float(current_time)
+            w.writerow([
+                datetime.now().isoformat(timespec="seconds"),
+                f"{elapsed:.3f}",
+                f"{float(front_area):.3f}",
+                f"{float(effective_area):.3f}",
+                f"{float(predicted_area):.3f}",
+                f"{float(pred_conf):.3f}",
+                int(bool(front_stale)),
+                int(bool(side_detected)),
+                f"{float(side_pred_conf):.3f}",
+                f"{float(edge_edge_factor):.3f}",
+                f"{float(last_throttle):.3f}",
+                f"{float(throttle):.3f}",
+            ])
+    except Exception:
+        pass
 
 
 def _normalize_angle_deg(angle_deg):
@@ -308,6 +348,13 @@ def process_boat_vision_based(sock, tx_port, side):
     desired_side_area = formation.get("desired_side_area", 0.0)
     desired_side_target_kind = formation.get("desired_side_target_kind")
 
+    # If side-camera detection is globally disabled at runtime, ignore side detections
+    # so the controller will rely only on the front camera for formation keeping.
+    if not bool(runtime_settings.get("enable_side_detection", True)):
+        side_detected = False
+        side_pred_ok = False
+        side_visual_ref_ready = False
+
     throttle = 1.0
     steer = 0.0
     throttle_ceiling = FOLLOW_MAX_THROTTLE
@@ -524,14 +571,39 @@ def process_boat_vision_based(sock, tx_port, side):
         front_area_error_ratio = normalize_area_error(target_opt, effective_area)
         shaped_front_area_error = shape_area_error(front_area_error_ratio)
 
-        if effective_area > target_max or front_area_error_ratio <= 0.0:
-            throttle = 0.0
-        elif effective_area < target_min:
-            throttle = FOLLOW_MAX_THROTTLE * throttle_gain
+        # Require a small persistence for area-too-close before zeroing throttle.
+        # Do not treat a small/negative area error as "too close" when the
+        # leader is classified as far (prevents false zeroing when measured
+        # area is noisy while the target is actually distant).
+        if effective_area > target_max or (front_area_error_ratio <= 0.0 and not is_far):
+            _AREA_OVER_MAX_COUNT[side] = _AREA_OVER_MAX_COUNT.get(side, 0) + 1
         else:
-            throttle = clamp(shaped_front_area_error * VISION_FRONT_AREA_GAIN * throttle_gain, 0.0, FOLLOW_MAX_THROTTLE)
-            if throttle > 0.0:
-                throttle = max(throttle, VISION_FRONT_AREA_MIN_THROTTLE)
+            _AREA_OVER_MAX_COUNT[side] = 0
+
+        if _AREA_OVER_MAX_COUNT.get(side, 0) >= int(AREA_PERSISTENCE_FRAMES):
+            # Log the zeroing event for diagnosis (Right follower logfile will capture it).
+            _log_right_debug(
+                side,
+                current_time,
+                front_area if 'front_area' in locals() else 0.0,
+                effective_area if 'effective_area' in locals() else 0.0,
+                front_predicted_area if 'front_predicted_area' in locals() else 0.0,
+                front_prediction_confidence if 'front_prediction_confidence' in locals() else 0.0,
+                front_stale if 'front_stale' in locals() else False,
+                side_detected if 'side_detected' in locals() else False,
+                side_prediction_confidence if 'side_prediction_confidence' in locals() else 0.0,
+                edge_edge_factor if 'edge_edge_factor' in locals() else 0.0,
+                _LAST_THROTTLE.get(side, 0.0),
+                0.0,
+            )
+            throttle = 0.0
+        else:
+            if effective_area < target_min:
+                throttle = FOLLOW_MAX_THROTTLE * throttle_gain
+            else:
+                throttle = clamp(shaped_front_area_error * VISION_FRONT_AREA_GAIN * throttle_gain, 0.0, FOLLOW_MAX_THROTTLE)
+                if throttle > 0.0:
+                    throttle = max(throttle, VISION_FRONT_AREA_MIN_THROTTLE)
 
         far_boost = compute_visual_far_boost(
             area=front_area,
@@ -660,6 +732,15 @@ def process_boat_vision_based(sock, tx_port, side):
         throttle = 0.0
         steer = filter_steer_command(side, 0.0, time.time())
         _LAST_THROTTLE[side] = 0.0
+        _log_right_debug(side, time.time(), front_area if 'front_area' in locals() else 0.0, 
+                         front_predicted_area if 'front_predicted_area' in locals() else 0.0,
+                         front_predicted_area if 'front_predicted_area' in locals() else 0.0,
+                         front_prediction_confidence if 'front_prediction_confidence' in locals() else 0.0,
+                         front_stale if 'front_stale' in locals() else False,
+                         side_detected if 'side_detected' in locals() else False,
+                         side_prediction_confidence if 'side_prediction_confidence' in locals() else 0.0,
+                         edge_edge_factor if 'edge_edge_factor' in locals() else 0.0,
+                         _LAST_THROTTLE.get(side, 0.0), 0.0)
         _send_control_command(sock, tx_port, 0.0, steer)
 
         speed_mps = state.get("speed", 0.0)
@@ -697,6 +778,16 @@ def process_boat_vision_based(sock, tx_port, side):
             "startup_sync_status": startup_sync_status,
         }
 
+    # Enforce a conservative minimum forward throttle when the front target
+    # is detected but visually small (far). This avoids false full-stops
+    # caused by noisy area/deadzone logic when the leader is actually distant.
+    try:
+        startup_ok = bool(runtime_settings.get("startup_sync_released", True))
+    except Exception:
+        startup_ok = True
+    if front_detected and is_far and startup_ok and not front_stale:
+        throttle = max(throttle, float(SEARCH_FORWARD_THROTTLE))
+
     throttle = clamp(throttle, 0.0, throttle_ceiling)
     _LAST_THROTTLE[side] = throttle
 
@@ -707,6 +798,15 @@ def process_boat_vision_based(sock, tx_port, side):
 
     steer = filter_steer_command(side, clamp(steer, -1.0, 1.0), time.time())
 
+    _log_right_debug(side, time.time(), front_area if 'front_area' in locals() else 0.0, 
+                     front_predicted_area if 'front_predicted_area' in locals() else 0.0,
+                     front_predicted_area if 'front_predicted_area' in locals() else 0.0,
+                     front_prediction_confidence if 'front_prediction_confidence' in locals() else 0.0,
+                     front_stale if 'front_stale' in locals() else False,
+                     side_detected if 'side_detected' in locals() else False,
+                     side_prediction_confidence if 'side_prediction_confidence' in locals() else 0.0,
+                     edge_edge_factor if 'edge_edge_factor' in locals() else 0.0,
+                     _LAST_THROTTLE.get(side, 0.0), throttle)
     _send_control_command(sock, tx_port, throttle, steer)
 
     speed_mps = state.get("speed", 0.0)

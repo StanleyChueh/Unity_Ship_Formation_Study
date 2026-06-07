@@ -1,6 +1,6 @@
 import threading
 
-from .config import BOAT_SIDES, CAMERA_STREAMS, ENABLE_KALMAN_FILTER, SYNC_FOLLOWER_STARTUP_ENABLE
+from .config import BOAT_SIDES, CAMERA_STREAMS, ENABLE_KALMAN_FILTER, SYNC_FOLLOWER_STARTUP_ENABLE, ENABLE_SIDE_DETECTION
 
 
 vision_lock = threading.Lock()
@@ -9,6 +9,8 @@ frame_lock = threading.Lock()
 
 runtime_settings = {
     "enable_kalman_filter": ENABLE_KALMAN_FILTER,
+    # Toggle to enable/disable using side-camera detections for control (default from config)
+    "enable_side_detection": bool(ENABLE_SIDE_DETECTION),
     "startup_sync_enabled": SYNC_FOLLOWER_STARTUP_ENABLE,
     "startup_sync_released": not SYNC_FOLLOWER_STARTUP_ENABLE,
     "startup_sync_ready_since": None,

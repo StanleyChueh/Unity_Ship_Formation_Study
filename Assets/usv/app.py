@@ -972,6 +972,16 @@ def main():
                         (0, 255, 0) if kalman_enabled else (0, 0, 255),
                         2,
                     )
+                    side_detect_enabled = bool(runtime_settings.get("enable_side_detection", True))
+                    cv2.putText(
+                        shaken_frame,
+                        f"SideDetect: {'ON' if side_detect_enabled else 'OFF'}  (press S)",
+                        (16, shaken_frame.shape[0] - 36),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.50,
+                        (0, 255, 0) if side_detect_enabled else (0, 0, 255),
+                        2,
+                    )
                     cv2.imshow(CAMERA_STREAMS[stream_name]["window"], shaken_frame)
                 t_imshow = time.time() - t0
 
@@ -983,6 +993,10 @@ def main():
                     new_value = not bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
                     runtime_settings["enable_kalman_filter"] = new_value
                     print(f"[Kalman] Filter toggled {'ON' if new_value else 'OFF'}")
+                if key in (ord("s"), ord("S")):
+                    new_value = not bool(runtime_settings.get("enable_side_detection", True))
+                    runtime_settings["enable_side_detection"] = new_value
+                    print(f"[SideDetect] Side-camera detection toggled {'ON' if new_value else 'OFF'}")
                 if key in (ord("c"), ord("C")):
                     # Save an on-demand checkpoint (writes independent run_id summary + snapshot)
                     now_ck = time.time()
