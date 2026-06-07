@@ -91,7 +91,7 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = True
+ENABLE_KALMAN_FILTER = False
 # If False, side-camera detections/predictions are ignored by the controller.
 # Set this in `config.py` to disable side-camera usage at startup.
 ENABLE_SIDE_DETECTION = False
@@ -365,7 +365,10 @@ STARTUP_STEER_LOCK_SEC = 2.0
 KV_STEER = 1.02
 STEER_DEADZONE_H = 0.06
 FINAL_STEER_DEADZONE_H = 0.045
-STEER_SLEW_RATE_PER_SEC = 2.4
+STEER_SLEW_RATE_PER_SEC = 4.0
+# Allow a lower slew rate for the Right follower to reduce abrupt steer changes.
+# Set this lower than `STEER_SLEW_RATE_PER_SEC` to make Right steering smoother.
+RIGHT_STEER_SLEW_RATE_PER_SEC = 4.0
 SEARCH_MODE_STEER = 0.5
 KV_THROTTLE_P = 0.00014
 FOLLOW_BASE_THROTTLE = 0.40

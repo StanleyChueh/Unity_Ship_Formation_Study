@@ -19,6 +19,7 @@ from .config import (
     PREDICTION_ARROW_MIN_PIXELS,
     PREDICTION_ARROW_PIXELS,
     STEER_SLEW_RATE_PER_SEC,
+    RIGHT_STEER_SLEW_RATE_PER_SEC,
     WINDOW_SIZE,
     YOLO_CLASS_FOLLOWER,
     YOLO_CLASS_LEADER,
@@ -85,7 +86,14 @@ def filter_steer_command(boat_side, raw_steer, current_time):
     else:
         dt = 0.05
 
-    max_delta = STEER_SLEW_RATE_PER_SEC * dt
+    # Use a lower slew rate for the Right follower to reduce abrupt steering
+    # changes that were observed as higher steer-jerkiness on the Right side.
+    try:
+        per_side_rate = RIGHT_STEER_SLEW_RATE_PER_SEC if str(boat_side).strip().lower() == "right" else STEER_SLEW_RATE_PER_SEC
+    except Exception:
+        per_side_rate = STEER_SLEW_RATE_PER_SEC
+
+    max_delta = float(per_side_rate) * dt
     filtered_steer = clamp(raw_steer, last_steer - max_delta, last_steer + max_delta)
 
     if abs(filtered_steer) < FINAL_STEER_DEADZONE_H and raw_steer == 0.0:
