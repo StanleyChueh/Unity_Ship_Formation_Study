@@ -37,14 +37,45 @@ from .state import (
 from .kalman import KalmanFilter
 
 
-def build_track_candidate(bbox, area, center_offset, center, method):
+def build_track_candidate(bbox, area, center_offset, center, method, target_kind=None):
     return {
         "bbox": bbox,
         "area": area,
         "center_offset": center_offset,
         "center": center,
         "method": method,
+        "target_kind": target_kind,
     }
+
+
+def get_scaled_reference_area(area):
+    scale = max(1e-3, float(FORMATION_SCALE_MULTIPLIER))
+    return max(1.0, float(area) / (scale * scale))
+
+
+def select_side_track_candidate(leader_target, follower_target, previous_target_kind=None):
+    mode = str(SIDE_CAMERA_TARGET_MODE).strip().lower()
+
+    if mode == "dual":
+        return follower_target or leader_target
+    if mode == "leader_only":
+        return leader_target
+    if mode == "follower_only":
+        return follower_target
+    if mode == "follower_preferred":
+        return follower_target or leader_target
+    if mode == "best_area":
+        if leader_target is not None and follower_target is not None:
+            leader_score = float(leader_target.get("area", 0.0))
+            follower_score = float(follower_target.get("area", 0.0))
+            if previous_target_kind == "leader":
+                leader_score *= 1.05
+            elif previous_target_kind == "follower":
+                follower_score *= 1.05
+            return leader_target if leader_score >= follower_score else follower_target
+        return leader_target or follower_target
+
+    return leader_target or follower_target
 
 
 def fuse_track_sources(yolo_target, wake_target):
@@ -94,28 +125,32 @@ def fuse_track_sources(yolo_target, wake_target):
     return fused
 
 
-def lock_visual_reference(boat_side, role, center_offset, area):
+def lock_visual_reference(boat_side, role, center_offset, area, target_kind=None):
     formation_ref = formation_targets[boat_side]
     if role == "front":
         init_key = "front_visual_initialized"
         offset_key = "desired_front_offset"
         area_key = "desired_front_area"
+        kind_key = "desired_front_target_kind"
         target_offset = VISION_FRONT_TARGET_OFFSET
     else:
         init_key = "side_visual_initialized"
         offset_key = "desired_side_offset"
         area_key = "desired_side_area"
+        kind_key = "desired_side_target_kind"
         target_offset = VISION_SIDE_TARGET_OFFSET
 
     if formation_ref.get(init_key, False):
         return
 
     formation_ref[offset_key] = target_offset
-    formation_ref[area_key] = area
+    formation_ref[area_key] = get_scaled_reference_area(area)
+    formation_ref[kind_key] = target_kind
     formation_ref[init_key] = True
     print(
         f"[Formation-{boat_side}] Locked {role} camera ref: "
-        f"offset={target_offset:.3f} area={area:.0f} "
+        f"offset={target_offset:.3f} target_area={formation_ref[area_key]:.0f} "
+        f"(scale={float(FORMATION_SCALE_MULTIPLIER):.2f}, class={target_kind or role}) "
         f"(observed offset={center_offset:.3f})"
     )
 
@@ -772,9 +807,11 @@ def cv_processing_thread():
                 best_area = 0.0
                 best_score = -1.0
                 detection_method = None
+                target_kind = None
                 center_point = None
                 center_offset = 0.0
                 yolo_target = None
+                side_leader_target = None
                 follower_target = None
                 wake_target = None
                 fusion_wake_weight = 0.0
@@ -783,6 +820,7 @@ def cv_processing_thread():
                 depth_result = None
                 depth_preview = None
                 best_follower_score = -1.0
+                best_side_leader_score = -1.0
 
                 if result is not None and result.boxes is not None:
                     for box in result.boxes:
@@ -816,22 +854,43 @@ def cv_processing_thread():
                                 center_point = ((x1 + x2) // 2, (y1 + y2) // 2)
                                 center_offset = candidate_offset
                                 detection_method = "YOLO"
-                                yolo_target = build_track_candidate(best_box, best_area, center_offset, center_point, "YOLO")
-                        else:
-                            if cls_id != YOLO_CLASS_FOLLOWER:
-                                continue
-                            follower_score = area
-                            if has_recent_track:
-                                follower_score *= 1.0 - min(abs(candidate_offset - preferred_offset), 1.0) * (TRACK_REACQUIRE_BIAS * 0.55)
-                            if follower_score > best_follower_score:
-                                best_follower_score = follower_score
-                                follower_target = build_track_candidate(
-                                    (x1, y1, x2, y2),
-                                    area,
-                                    candidate_offset,
-                                    ((x1 + x2) // 2, (y1 + y2) // 2),
-                                    "FOLLOWER",
+                                yolo_target = build_track_candidate(
+                                    best_box,
+                                    best_area,
+                                    center_offset,
+                                    center_point,
+                                    "YOLO",
+                                    target_kind="leader",
                                 )
+                        else:
+                            if cls_id == YOLO_CLASS_LEADER:
+                                leader_score = area
+                                if has_recent_track:
+                                    leader_score *= 1.0 - min(abs(candidate_offset - preferred_offset), 1.0) * TRACK_REACQUIRE_BIAS
+                                if leader_score > best_side_leader_score:
+                                    best_side_leader_score = leader_score
+                                    side_leader_target = build_track_candidate(
+                                        (x1, y1, x2, y2),
+                                        area,
+                                        candidate_offset,
+                                        ((x1 + x2) // 2, (y1 + y2) // 2),
+                                        "YOLO",
+                                        target_kind="leader",
+                                    )
+                            elif cls_id == YOLO_CLASS_FOLLOWER:
+                                follower_score = area
+                                if has_recent_track:
+                                    follower_score *= 1.0 - min(abs(candidate_offset - preferred_offset), 1.0) * (TRACK_REACQUIRE_BIAS * 0.55)
+                                if follower_score > best_follower_score:
+                                    best_follower_score = follower_score
+                                    follower_target = build_track_candidate(
+                                        (x1, y1, x2, y2),
+                                        area,
+                                        candidate_offset,
+                                        ((x1 + x2) // 2, (y1 + y2) // 2),
+                                        "FOLLOWER",
+                                        target_kind="follower",
+                                    )
 
                 if role == "front":
                     wake_reference_bbox = yolo_target["bbox"] if yolo_target is not None else None
@@ -840,7 +899,12 @@ def cv_processing_thread():
                         if wake_result is not None:
                             wake_mask = wake_result["mask"]
                             wake_target = build_track_candidate(
-                                wake_result["bbox"], wake_result["area"], wake_result["center_offset"], wake_result["center"], "WAKE"
+                                wake_result["bbox"],
+                                wake_result["area"],
+                                wake_result["center_offset"],
+                                wake_result["center"],
+                                "WAKE",
+                                target_kind="leader",
                             )
                         fused_target = fuse_track_sources(yolo_target, wake_target)
                     else:
@@ -855,6 +919,7 @@ def cv_processing_thread():
                         center_offset = fused_target["center_offset"]
                         center_point = fused_target["center"]
                         detection_method = fused_target["method"]
+                        target_kind = fused_target.get("target_kind", "leader")
                         fusion_wake_weight = fused_target.get("wake_weight", 0.0)
                     elif yolo_target is not None:
                         best_box = yolo_target["bbox"]
@@ -862,24 +927,32 @@ def cv_processing_thread():
                         center_offset = yolo_target["center_offset"]
                         center_point = yolo_target["center"]
                         detection_method = yolo_target["method"]
+                        target_kind = yolo_target.get("target_kind", "leader")
                     else:
                         best_box = None
                         best_area = 0.0
                         center_offset = 0.0
                         center_point = None
                         detection_method = None
-                elif follower_target is not None:
-                    best_box = follower_target["bbox"]
-                    best_area = follower_target["area"]
-                    center_offset = follower_target["center_offset"]
-                    center_point = follower_target["center"]
-                    detection_method = follower_target["method"]
                 else:
-                    best_box = None
-                    best_area = 0.0
-                    center_offset = 0.0
-                    center_point = None
-                    detection_method = None
+                    selected_side_target = select_side_track_candidate(
+                        side_leader_target,
+                        follower_target,
+                        prev_state.get("last_known_target_kind"),
+                    )
+                    if selected_side_target is not None:
+                        best_box = selected_side_target["bbox"]
+                        best_area = selected_side_target["area"]
+                        center_offset = selected_side_target["center_offset"]
+                        center_point = selected_side_target["center"]
+                        detection_method = selected_side_target["method"]
+                        target_kind = selected_side_target.get("target_kind")
+                    else:
+                        best_box = None
+                        best_area = 0.0
+                        center_offset = 0.0
+                        center_point = None
+                        detection_method = None
 
                 current_time = time.time()
                 cache_entry = depth_cache[boat_side]
@@ -920,12 +993,19 @@ def cv_processing_thread():
                     state = vision_states[stream_name]
                     state["fps"] = fps
                     overlay_depth_status = state.get("depth_status", "Depth disabled")
+                    if role == "side":
+                        state["side_leader_detected"] = side_leader_target is not None
+                        state["side_leader_area"] = float(side_leader_target["area"]) if side_leader_target is not None else 0.0
+                        state["side_leader_center_offset"] = float(side_leader_target["center_offset"]) if side_leader_target is not None else 0.0
+                        state["side_follower_detected"] = follower_target is not None
+                        state["side_follower_area"] = float(follower_target["area"]) if follower_target is not None else 0.0
+                        state["side_follower_center_offset"] = float(follower_target["center_offset"]) if follower_target is not None else 0.0
 
                     if best_box is not None:
                         if role == "front" and detection_method in ("YOLO", "FUSED"):
-                            lock_visual_reference(boat_side, "front", center_offset, best_area)
-                        elif role == "side" and detection_method == "FOLLOWER":
-                            lock_visual_reference(boat_side, "side", center_offset, best_area)
+                            lock_visual_reference(boat_side, "front", center_offset, best_area, target_kind=target_kind)
+                        elif role == "side" and target_kind in ("leader", "follower"):
+                            lock_visual_reference(boat_side, "side", center_offset, best_area, target_kind=target_kind)
 
                         previous_offset = state.get("last_known_offset", center_offset)
                         previous_area = state.get("last_known_area", best_area)
@@ -971,6 +1051,7 @@ def cv_processing_thread():
                         state["target_bbox"] = best_box
                         state["target_area"] = best_area
                         state["target_center_offset"] = center_offset
+                        state["target_kind"] = target_kind
                         if role == "front" and depth_result and depth_result.get("ok"):
                             depth_value = depth_result.get("relative_depth")
                             state["target_depth"] = depth_value
@@ -987,7 +1068,7 @@ def cv_processing_thread():
                             state["target_depth_confidence"] = 0.0
                             state["depth_inference_ms"] = 0.0
                             if role == "side":
-                                state["depth_status"] = "Side follower track"
+                                state["depth_status"] = f"Side {target_kind or 'camera'} track"
                             elif depth_estimator is not None and yolo_target is None and DEPTH_ONLY_ON_YOLO:
                                 state["depth_status"] = "Depth waiting for YOLO boat"
                             elif depth_estimator is not None:
@@ -998,6 +1079,7 @@ def cv_processing_thread():
                         state["last_known_offset"] = center_offset
                         state["last_known_area"] = best_area
                         state["last_known_method"] = detection_method
+                        state["last_known_target_kind"] = target_kind
                         overlay_depth_status = state["depth_status"]
                         overlay_offset_velocity = state.get("track_offset_velocity", 0.0)
                         overlay_vertical_velocity = state.get("track_vertical_velocity", 0.0)
@@ -1011,6 +1093,7 @@ def cv_processing_thread():
                             state["target_bbox"] = None
                             state["target_area"] = state.get("last_known_area", 0.0)
                             state["target_center_offset"] = state.get("last_known_offset", 0.0)
+                            state["target_kind"] = state.get("last_known_target_kind")
                             state["prediction_confidence"] = state.get("prediction_confidence", 0.0) * PREDICTION_STALE_DECAY
                             overlay_depth_status = state.get("depth_status", "Depth idle")
                             overlay_offset_velocity = state.get("track_offset_velocity", 0.0)
@@ -1023,6 +1106,7 @@ def cv_processing_thread():
                             state["target_bbox"] = None
                             state["target_area"] = 0.0
                             state["target_center_offset"] = 0.0
+                            state["target_kind"] = None
                             state["target_depth"] = None
                             state["target_depth_confidence"] = 0.0
                             state["depth_inference_ms"] = 0.0
@@ -1056,10 +1140,7 @@ def cv_processing_thread():
                         det_label = f"YOLO({detection['cls_name']}): {detection['area']:.0f}"
                         det_thickness = 2
 
-                        if yolo_target is not None and det_box == yolo_target["bbox"] and det_cls_id == YOLO_CLASS_LEADER:
-                            det_label += " [target]"
-                            det_thickness = 3
-                        elif follower_target is not None and det_box == follower_target["bbox"] and det_cls_id == YOLO_CLASS_FOLLOWER and role == "side":
+                        if best_box is not None and det_box == best_box:
                             det_label += " [target]"
                             det_thickness = 3
 

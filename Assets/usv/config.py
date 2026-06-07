@@ -93,6 +93,18 @@ YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
 ENABLE_KALMAN_FILTER = True
 
+# Startup synchronization for repeatable experiments.
+# When enabled, both followers keep outputting zero command until startup
+# readiness conditions are met, reducing run-to-run timing drift.
+SYNC_FOLLOWER_STARTUP_ENABLE = True
+SYNC_FOLLOWER_STARTUP_REQUIRE_ALL_CAMERA_STREAMS = True
+SYNC_FOLLOWER_STARTUP_REQUIRE_FOLLOWER_STATE = True
+SYNC_FOLLOWER_STARTUP_REQUIRE_FRONT_VISUAL_LOCK = True
+SYNC_FOLLOWER_STARTUP_REQUIRE_SIDE_VISUAL_LOCK = True
+SYNC_FOLLOWER_STARTUP_SETTLE_SEC = 0.50
+SYNC_FOLLOWER_STARTUP_TIMEOUT_SEC = 25.0
+SYNC_FOLLOWER_STARTUP_PACKET_STALE_SEC = 0.50
+
 # Kalman tracker tuning. Higher process noise makes the predictor respond
 # faster to turns; lower measurement noise trusts detections more.
 KF_PROC_POS_VAR = 2.5e-3
@@ -126,12 +138,25 @@ LEADER_INITIAL_CONTROL_MODE = "Trajectory"
 # Trajectory selection: "Straight", "Circle", "Triangle", "Rectangle"
 LEADER_TRAJECTORY_MODE = "Circle"
 LEADER_TRAJECTORY_SPEED = 18.0 #14.0
+LEADER_TRAJECTORY_SPEED_RAMP_ENABLE = True
+LEADER_TRAJECTORY_ACCELERATION = 4.0
+LEADER_TRAJECTORY_INITIAL_SPEED = 0.0
 LEADER_TRAJECTORY_CIRCLE_RADIUS = 360.0
 LEADER_TRAJECTORY_TRIANGLE_SIDE = 30.0
 LEADER_TRAJECTORY_RECT_SIZE = (36.0, 22.0)
 LEADER_TRAJECTORY_LOOP = True
 # If true, the leader will be reset/anchored when the command is applied
 LEADER_TRAJECTORY_RESET_ON_APPLY = True
+# Follower throttle ramping keeps both followers from jumping instantly to
+# abrupt command changes during startup or catch-up maneuvers.
+FOLLOWER_THROTTLE_SPEED_RAMP_ENABLE = True
+FOLLOWER_THROTTLE_RAMP_UP_RATE = 0.65
+FOLLOWER_THROTTLE_RAMP_DOWN_RATE = 1.2
+# Formation scale multiplier for visual reference locking.
+# 1.0 keeps the originally observed spacing.
+# Values > 1.0 make the commanded formation larger by targeting a smaller
+# apparent boat size in the cameras.
+FORMATION_SCALE_MULTIPLIER = 1.15
 # Retry leader startup command to avoid missing one-shot UDP when Unity enters
 # Play mode slightly later than Python start.
 # Total sends includes the first send (e.g. 5 means send immediately + 4 retries).
@@ -238,6 +263,23 @@ PREDICTION_ENABLE_LEADER_TRAJECTORY = False
 SIDE_PREDICTION_FOLLOW_ENABLE = True
 SIDE_PREDICTION_MAX_LOST_SEC = 1.5
 SIDE_PREDICTION_MIN_CONF = 0.20
+# Side-camera target policy:
+# - "dual": use follower for spacing when visible, while also biasing steering
+#   with leader position to keep the leader inside the side-camera view
+# - "leader_preferred": use leader when visible, otherwise follower fallback
+# - "follower_preferred": use follower when visible, otherwise leader fallback
+# - "leader_only": ignore follower boxes
+# - "follower_only": ignore leader boxes
+# - "best_area": choose the larger visible target
+SIDE_CAMERA_TARGET_MODE = "leader_only"
+# In dual mode, blend side steering toward the leader offset so the leader
+# stays visible while follower spacing still drives the area target.
+SIDE_DUAL_LEADER_OFFSET_BLEND = 0.35
+SIDE_DUAL_LEADER_EDGE_START = 0.55
+SIDE_DUAL_LEADER_EDGE_BLEND = 0.80
+# Reduce side-camera steering/throttle bias when the fallback target class
+# differs from the class used to lock the original side visual reference.
+SIDE_REFERENCE_MISMATCH_BIAS_SCALE = 0.35
 
 FRONT_PRIORITY_CONFIDENCE = 0.35
 FRONT_PRIORITY_STALE_SCALE = 0.25
@@ -302,8 +344,8 @@ VISION_TURN_PREDICTIVE_THROTTLE_GAIN = 0.14
 VISION_TURN_PREDICTIVE_THROTTLE_MAX = 0.12
 VISION_TURN_PREDICTIVE_SPEED_CEILING = 0.95
 FOLLOWER_PAIR_AREA_BALANCE_TOLERANCE_RATIO = 0.12
-FOLLOWER_PAIR_CATCHUP_GAIN = 0.18
-FOLLOWER_PAIR_CATCHUP_MAX = 0.14
+FOLLOWER_PAIR_CATCHUP_GAIN = 0.0 #0.18
+FOLLOWER_PAIR_CATCHUP_MAX = 0.0 #0.14
 
 # =========================================================
 # Controller params

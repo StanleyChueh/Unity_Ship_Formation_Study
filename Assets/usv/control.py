@@ -9,7 +9,7 @@ import time
 
 from .config import *
 from .helpers import blend_value, clamp, filter_steer_command, get_peer_boat_side
-from .state import boat_comm_states, formation_targets, vision_lock, vision_states
+from .state import boat_comm_states, formation_targets, runtime_settings, vision_lock, vision_states
 
 
 # Per-side startup lock expiry timestamps (epoch seconds).
@@ -25,6 +25,11 @@ def _normalize_angle_deg(angle_deg):
     while value < -180.0:
         value += 360.0
     return value
+
+
+def _send_control_command(sock, tx_port, throttle, steer):
+    msg = json.dumps({"throttle": float(throttle), "steer": float(steer)})
+    sock.sendto(msg.encode("utf-8"), (UDP_IP, tx_port))
 
 
 def compute_pair_catchup_boost(boat_side, own_detected, own_stale, own_method, own_area):
@@ -79,6 +84,14 @@ def get_tracking_gains(method, is_stale):
         throttle_gain *= STALE_TRACK_THROTTLE_GAIN
 
     return steer_gain, throttle_gain
+
+
+def get_side_area_target_opt(side_visual_ref_ready, desired_side_area, side_target_kind):
+    if side_visual_ref_ready and desired_side_area > 1.0:
+        return desired_side_area
+    if side_target_kind == "leader":
+        return YOLO_AREA_OPT
+    return FOLLOWER_AREA_OPT
 
 
 def normalize_area_error(desired_area, measured_area):
@@ -257,8 +270,12 @@ def process_boat_vision_based(sock, tx_port, side):
     side_detected = side_state["target_detected"]
     side_stale = side_state.get("target_stale", False)
     side_method = side_state["method"]
+    side_target_kind = side_state.get("target_kind")
     side_offset = side_state["target_center_offset"]
     side_area = side_state["target_area"]
+    side_leader_detected = bool(side_state.get("side_leader_detected", False))
+    side_leader_offset = float(side_state.get("side_leader_center_offset", 0.0))
+    side_follower_detected = bool(side_state.get("side_follower_detected", False))
     side_predicted_offset = side_state.get("predicted_offset", side_offset)
     side_predicted_area = side_state.get("predicted_area", side_area)
     side_prediction_confidence = side_state.get("prediction_confidence", 0.0)
@@ -289,6 +306,7 @@ def process_boat_vision_based(sock, tx_port, side):
     side_visual_ref_ready = formation.get("side_visual_initialized", False)
     desired_side_offset = formation.get("desired_side_offset", 0.0)
     desired_side_area = formation.get("desired_side_area", 0.0)
+    desired_side_target_kind = formation.get("desired_side_target_kind")
 
     throttle = 1.0
     steer = 0.0
@@ -301,6 +319,11 @@ def process_boat_vision_based(sock, tx_port, side):
     pair_catchup_boost = 0.0
     peer_front_area = None
     pair_area_gap_ratio = 0.0
+    edge_offset = False
+    edge_edge_factor = 0.0
+    edge_throttle_floor = None
+    side_reference_matches = True
+    side_control_offset = side_offset
     steer_gain, throttle_gain = get_tracking_gains(front_method, front_stale)
 
     if side_pred_ok and side_visual_ref_ready:
@@ -326,9 +349,27 @@ def process_boat_vision_based(sock, tx_port, side):
             clamp(side_prediction_control_weight * PREDICTION_AREA_BLEND, 0.0, 1.0),
         )
 
-        edge_offset_abs = abs(side_effective_offset)
+        side_control_offset = side_effective_offset
+        if (
+            str(SIDE_CAMERA_TARGET_MODE).strip().lower() == "dual"
+            and side_leader_detected
+            and side_follower_detected
+        ):
+            leader_edge_factor = clamp(
+                (abs(side_leader_offset) - float(SIDE_DUAL_LEADER_EDGE_START))
+                / max(1e-5, (1.0 - float(SIDE_DUAL_LEADER_EDGE_START))),
+                0.0,
+                1.0,
+            )
+            leader_blend = blend_value(
+                float(SIDE_DUAL_LEADER_OFFSET_BLEND),
+                float(SIDE_DUAL_LEADER_EDGE_BLEND),
+                leader_edge_factor,
+            )
+            side_control_offset = blend_value(side_effective_offset, side_leader_offset, leader_blend)
+
+        edge_offset_abs = abs(side_control_offset)
         edge_offset = edge_offset_abs >= float(SIDE_EDGE_IGNORE_OFFSET)
-        edge_edge_factor = 0.0
         if side == "Right":
             edge_edge_factor = clamp(
                 (edge_offset_abs - float(RIGHT_SIDE_EDGE_RECOVERY_START))
@@ -336,7 +377,6 @@ def process_boat_vision_based(sock, tx_port, side):
                 0.0,
                 1.0,
             )
-        edge_throttle_floor = None
         right_edge_recovery_gain = 1.0
         if side == "Right" and edge_edge_factor > 0.0:
             # Use only the right boat's own motion state to recover more
@@ -353,7 +393,7 @@ def process_boat_vision_based(sock, tx_port, side):
                 FOLLOW_MAX_THROTTLE * 0.78,
             )
 
-        side_offset_error = side_effective_offset - desired_side_offset
+        side_offset_error = side_control_offset - desired_side_offset
         if abs(side_offset_error) > SIDE_STEER_DEADZONE_H:
             side_steer_bias = clamp(
                 side_offset_error * SIDE_TRACK_STEER_KP * SIDE_TRACK_STEER_SIGN_BY_BOAT[side],
@@ -375,6 +415,16 @@ def process_boat_vision_based(sock, tx_port, side):
             -SIDE_TRACK_MAX_THROTTLE_BIAS,
             SIDE_TRACK_MAX_THROTTLE_BIAS,
         )
+
+        side_reference_matches = (
+            desired_side_target_kind is None
+            or side_target_kind is None
+            or desired_side_target_kind == side_target_kind
+        )
+        if not side_reference_matches:
+            side_steer_bias *= float(SIDE_REFERENCE_MISMATCH_BIAS_SCALE)
+            side_throttle_bias *= float(SIDE_REFERENCE_MISMATCH_BIAS_SCALE)
+            side_area_error_ratio *= float(SIDE_REFERENCE_MISMATCH_BIAS_SCALE)
 
         if side_stale:
             side_steer_bias *= SIDE_STALE_BIAS_SCALE
@@ -550,7 +600,7 @@ def process_boat_vision_based(sock, tx_port, side):
                 throttle = max(throttle * STALE_TARGET_THROTTLE_SCALE, SEARCH_FORWARD_THROTTLE)
 
     else:
-        side_chase_available = side_pred_ok and (side_method == "FOLLOWER")
+        side_chase_available = side_pred_ok and side_target_kind in ("leader", "follower")
 
         if side_chase_available:
             steer = clamp(side_steer_bias / max(FRONT_PRIORITY_NO_FRONT_STEER_SCALE, 1e-5), -SEARCH_MODE_STEER, SEARCH_MODE_STEER)
@@ -559,9 +609,13 @@ def process_boat_vision_based(sock, tx_port, side):
                 with vision_lock:
                     vision_states[FRONT_STREAM_BY_BOAT[side]]["lost_search_dir"] = 1.0 if steer > 0 else -1.0
 
-            side_target_opt = desired_side_area if (side_visual_ref_ready and desired_side_area > FOLLOWER_AREA_MIN) else FOLLOWER_AREA_OPT
+            side_target_opt = get_side_area_target_opt(side_visual_ref_ready, desired_side_area, side_target_kind)
             side_follow_error_ratio = normalize_area_error(side_target_opt, side_effective_area)
             side_follow_shaped = shape_area_error(side_follow_error_ratio)
+            if not side_reference_matches:
+                side_follow_shaped *= float(SIDE_REFERENCE_MISMATCH_BIAS_SCALE)
+
+            side_chase_throttle_gain = FOLLOWER_TRACK_THROTTLE_GAIN if side_method == "FOLLOWER" else YOLO_TRACK_THROTTLE_GAIN
 
             if side_follow_error_ratio <= 0.0:
                 if edge_offset:
@@ -569,7 +623,7 @@ def process_boat_vision_based(sock, tx_port, side):
                 else:
                     throttle = 0.0
             else:
-                base_throttle = (side_follow_shaped * SIDE_TRACK_AREA_GAIN * FOLLOWER_TRACK_THROTTLE_GAIN) + (SEARCH_FORWARD_THROTTLE * 0.70)
+                base_throttle = (side_follow_shaped * SIDE_TRACK_AREA_GAIN * side_chase_throttle_gain) + (SEARCH_FORWARD_THROTTLE * 0.70)
                 if edge_offset:
                     throttle = max(base_throttle, float(SEARCH_FORWARD_THROTTLE) * float(SIDE_EDGE_THROTTLE_SCALE))
                     throttle = clamp(throttle, 0.0, FOLLOW_MAX_THROTTLE * 0.78)
@@ -600,6 +654,49 @@ def process_boat_vision_based(sock, tx_port, side):
             else:
                 steer = lost_search_dir * SEARCH_MODE_STEER
 
+    startup_sync_released = bool(runtime_settings.get("startup_sync_released", True))
+    startup_sync_status = str(runtime_settings.get("startup_sync_status", "released"))
+    if not startup_sync_released:
+        throttle = 0.0
+        steer = filter_steer_command(side, 0.0, time.time())
+        _LAST_THROTTLE[side] = 0.0
+        _send_control_command(sock, tx_port, 0.0, steer)
+
+        speed_mps = state.get("speed", 0.0)
+        leader_speed_mps = state.get("leader_speed", 0.0)
+        distance = compute_distance_from_area(front_area, desired_front_area, YOLO_AREA_OPT) if front_detected else 0.0
+        target_distance = compute_distance_from_area(desired_front_area, desired_front_area, YOLO_AREA_OPT) if (front_detected and front_visual_ref_ready) else 0.0
+        formation_error = compute_formation_error(front_offset, desired_front_offset, front_area, desired_front_area) if (front_detected and front_visual_ref_ready) else 0.0
+
+        return {
+            "detected": front_detected,
+            "stale": front_stale,
+            "method": front_method,
+            "side_detected": side_detected,
+            "side_stale": side_stale,
+            "side_method": side_method,
+            "throttle": 0.0,
+            "steer": steer,
+            "area": front_area if front_detected else 0.0,
+            "side_area": side_area if side_detected else 0.0,
+            "offset": front_offset if front_detected else 0.0,
+            "side_offset": side_effective_offset if side_detected else 0.0,
+            "peer_area": peer_front_area if peer_front_area is not None else 0.0,
+            "pair_area_gap_ratio": pair_area_gap_ratio,
+            "pair_catchup_boost": 0.0,
+            "pred_offset": front_predicted_offset if front_detected else 0.0,
+            "pred_conf": front_prediction_confidence if front_detected else 0.0,
+            "side_steer_bias": 0.0,
+            "side_throttle_bias": 0.0,
+            "speed_knots": speed_mps * 1.94384,
+            "leader_speed_knots": leader_speed_mps * 1.94384,
+            "distance": distance,
+            "target_distance": target_distance,
+            "formation_error": formation_error,
+            "startup_sync_hold": True,
+            "startup_sync_status": startup_sync_status,
+        }
+
     throttle = clamp(throttle, 0.0, throttle_ceiling)
     _LAST_THROTTLE[side] = throttle
 
@@ -610,8 +707,7 @@ def process_boat_vision_based(sock, tx_port, side):
 
     steer = filter_steer_command(side, clamp(steer, -1.0, 1.0), time.time())
 
-    msg = json.dumps({"throttle": throttle, "steer": steer})
-    sock.sendto(msg.encode("utf-8"), (UDP_IP, tx_port))
+    _send_control_command(sock, tx_port, throttle, steer)
 
     speed_mps = state.get("speed", 0.0)
     leader_speed_mps = state.get("leader_speed", 0.0)
@@ -646,4 +742,6 @@ def process_boat_vision_based(sock, tx_port, side):
         "distance": distance,
         "target_distance": target_distance,
         "formation_error": formation_error,
+        "startup_sync_hold": False,
+        "startup_sync_status": startup_sync_status,
     }

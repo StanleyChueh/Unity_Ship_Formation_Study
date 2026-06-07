@@ -27,6 +27,9 @@ from .config import (
     LEADER_AUTO_TRAJECTORY_TX_PORT,
     LEADER_TRAJECTORY_MODE,
     LEADER_TRAJECTORY_SPEED,
+    LEADER_TRAJECTORY_SPEED_RAMP_ENABLE,
+    LEADER_TRAJECTORY_ACCELERATION,
+    LEADER_TRAJECTORY_INITIAL_SPEED,
     LEADER_TRAJECTORY_CIRCLE_RADIUS,
     LEADER_TRAJECTORY_TRIANGLE_SIDE,
     LEADER_TRAJECTORY_RECT_SIZE,
@@ -39,12 +42,31 @@ from .config import (
     LEADER_CONNECTION_POLL_INTERVAL_SEC,
     LEADER_STARTUP_CMD_RETRY_COUNT,
     LEADER_STARTUP_CMD_RETRY_INTERVAL_SEC,
+    FOLLOWER_THROTTLE_SPEED_RAMP_ENABLE,
+    FOLLOWER_THROTTLE_RAMP_UP_RATE,
+    FOLLOWER_THROTTLE_RAMP_DOWN_RATE,
+    SYNC_FOLLOWER_STARTUP_ENABLE,
+    SYNC_FOLLOWER_STARTUP_REQUIRE_ALL_CAMERA_STREAMS,
+    SYNC_FOLLOWER_STARTUP_REQUIRE_FOLLOWER_STATE,
+    SYNC_FOLLOWER_STARTUP_REQUIRE_FRONT_VISUAL_LOCK,
+    SYNC_FOLLOWER_STARTUP_REQUIRE_SIDE_VISUAL_LOCK,
+    SYNC_FOLLOWER_STARTUP_SETTLE_SEC,
+    SYNC_FOLLOWER_STARTUP_TIMEOUT_SEC,
+    SYNC_FOLLOWER_STARTUP_PACKET_STALE_SEC,
     NEAR_MISS_DISTANCE_THRESHOLD_PX,
     PREDICTION_HORIZON_SEC,
 )
 from .control import process_boat_vision_based
 from .helpers import apply_camera_shake, make_status_frame
-from .state import display_frames, frame_lock, runtime_settings, vision_lock, vision_states
+from .state import (
+    boat_comm_states,
+    display_frames,
+    formation_targets,
+    frame_lock,
+    runtime_settings,
+    vision_lock,
+    vision_states,
+)
 from .vision import cv_processing_thread, tcp_camera_receiver_thread
 
 
@@ -644,6 +666,9 @@ def _send_leader_startup_commands():
             "cmd": "set_trajectory",
             "mode": LEADER_TRAJECTORY_MODE,
             "speed": LEADER_TRAJECTORY_SPEED,
+            "enable_speed_ramp": bool(LEADER_TRAJECTORY_SPEED_RAMP_ENABLE),
+            "trajectory_acceleration": float(LEADER_TRAJECTORY_ACCELERATION),
+            "trajectory_initial_speed": float(LEADER_TRAJECTORY_INITIAL_SPEED),
             "circle_radius": LEADER_TRAJECTORY_CIRCLE_RADIUS,
             "triangle_side_length": LEADER_TRAJECTORY_TRIANGLE_SIDE,
             "rectangle_size_x": LEADER_TRAJECTORY_RECT_SIZE[0],
@@ -672,6 +697,9 @@ def _send_leader_startup_commands():
                 "cmd": "set_trajectory",
                 "mode": LEADER_TRAJECTORY_MODE,
                 "speed": LEADER_TRAJECTORY_SPEED,
+                "enable_speed_ramp": bool(LEADER_TRAJECTORY_SPEED_RAMP_ENABLE),
+                "trajectory_acceleration": float(LEADER_TRAJECTORY_ACCELERATION),
+                "trajectory_initial_speed": float(LEADER_TRAJECTORY_INITIAL_SPEED),
                 "circle_radius": LEADER_TRAJECTORY_CIRCLE_RADIUS,
                 "triangle_side_length": LEADER_TRAJECTORY_TRIANGLE_SIDE,
                 "rectangle_size_x": LEADER_TRAJECTORY_RECT_SIZE[0],
@@ -687,6 +715,23 @@ def _send_leader_startup_commands():
             print(f"[LeaderCmd] Failed writing startup file: {e}")
     except Exception:
         pass
+
+
+def _send_follower_startup_commands():
+    send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    cmd = {
+        "cmd": "set_drive_tuning",
+        "enable_throttle_ramp": bool(FOLLOWER_THROTTLE_SPEED_RAMP_ENABLE),
+        "throttle_ramp_up_rate": float(FOLLOWER_THROTTLE_RAMP_UP_RATE),
+        "throttle_ramp_down_rate": float(FOLLOWER_THROTTLE_RAMP_DOWN_RATE),
+    }
+    for port in (int(PORT_LEFT_TX), int(PORT_RIGHT_TX)):
+        try:
+            send_sock.sendto(json.dumps(cmd).encode("utf-8"), (UDP_IP, port))
+            print(f"[FollowerCmd] Sent drive tuning to follower port {port}")
+        except Exception:
+            print(f"[FollowerCmd] Failed sending drive tuning to port {port}")
+    send_sock.close()
 
 
 def _wait_for_follower_connections(timeout_sec, poll_interval_sec):
@@ -716,6 +761,95 @@ def _wait_for_follower_connections(timeout_sec, poll_interval_sec):
         missing = [stream_name for stream_name, is_connected in connected_streams.items() if not is_connected]
         print(f"[LeaderCmd] Waiting for follower camera links: {', '.join(missing)}")
         time.sleep(poll_interval_sec)
+
+
+def _set_startup_sync_state(released, status, wait_reason=""):
+    runtime_settings["startup_sync_released"] = bool(released)
+    runtime_settings["startup_sync_status"] = str(status)
+    runtime_settings["startup_sync_wait_reason"] = str(wait_reason)
+
+
+def _evaluate_startup_sync(now):
+    if not bool(runtime_settings.get("startup_sync_enabled", False)):
+        _set_startup_sync_state(True, "disabled", "")
+        return True
+
+    if runtime_settings.get("startup_sync_started_at") is None:
+        runtime_settings["startup_sync_started_at"] = now
+
+    if bool(runtime_settings.get("startup_sync_released", False)):
+        return True
+
+    started_at = float(runtime_settings.get("startup_sync_started_at") or now)
+    timeout_sec = max(0.0, float(SYNC_FOLLOWER_STARTUP_TIMEOUT_SEC))
+    if timeout_sec > 0.0 and (now - started_at) >= timeout_sec:
+        _set_startup_sync_state(True, "timeout_release", "startup sync timeout reached")
+        print("[StartupSync] Timeout reached; releasing follower control gate.")
+        return True
+
+    missing = []
+
+    if bool(SYNC_FOLLOWER_STARTUP_REQUIRE_ALL_CAMERA_STREAMS):
+        with vision_lock:
+            disconnected = [
+                stream_name
+                for stream_name in CAMERA_STREAMS
+                if not bool(vision_states[stream_name].get("connected", False))
+            ]
+        if disconnected:
+            missing.append(f"streams:{','.join(disconnected)}")
+
+    stale_limit = max(0.05, float(SYNC_FOLLOWER_STARTUP_PACKET_STALE_SEC))
+    if bool(SYNC_FOLLOWER_STARTUP_REQUIRE_FOLLOWER_STATE):
+        with vision_lock:
+            follower_state_missing = []
+            for side in ("Left", "Right"):
+                comm = boat_comm_states.get(side, {})
+                last_packet_time = float(comm.get("last_packet_time", 0.0))
+                is_connected = bool(comm.get("connected", False))
+                is_fresh = last_packet_time > 0.0 and (now - last_packet_time) <= stale_limit
+                if not (is_connected and is_fresh):
+                    follower_state_missing.append(side)
+        if follower_state_missing:
+            missing.append(f"state:{','.join(follower_state_missing)}")
+
+    if bool(SYNC_FOLLOWER_STARTUP_REQUIRE_FRONT_VISUAL_LOCK):
+        with vision_lock:
+            front_missing = [
+                side for side in ("Left", "Right")
+                if not bool(formation_targets[side].get("front_visual_initialized", False))
+            ]
+        if front_missing:
+            missing.append(f"front_lock:{','.join(front_missing)}")
+
+    if bool(SYNC_FOLLOWER_STARTUP_REQUIRE_SIDE_VISUAL_LOCK):
+        with vision_lock:
+            side_missing = [
+                side for side in ("Left", "Right")
+                if not bool(formation_targets[side].get("side_visual_initialized", False))
+            ]
+        if side_missing:
+            missing.append(f"side_lock:{','.join(side_missing)}")
+
+    if missing:
+        runtime_settings["startup_sync_ready_since"] = None
+        _set_startup_sync_state(False, "waiting", " | ".join(missing))
+        return False
+
+    ready_since = runtime_settings.get("startup_sync_ready_since")
+    if ready_since is None:
+        runtime_settings["startup_sync_ready_since"] = now
+        ready_since = now
+
+    settle_sec = max(0.0, float(SYNC_FOLLOWER_STARTUP_SETTLE_SEC))
+    remaining = settle_sec - (now - float(ready_since))
+    if remaining > 0.0:
+        _set_startup_sync_state(False, "settling", f"settling:{remaining:.2f}s")
+        return False
+
+    _set_startup_sync_state(True, "released", "startup sync released")
+    print("[StartupSync] All follower startup checks passed; releasing synchronized follower control.")
+    return True
 
 
 def main():
@@ -754,7 +888,16 @@ def main():
         if bool(LEADER_WAIT_FOR_FOLLOWER_CONNECTIONS):
             _wait_for_follower_connections(LEADER_CONNECTION_WAIT_TIMEOUT_SEC, LEADER_CONNECTION_POLL_INTERVAL_SEC)
 
+    runtime_settings["startup_sync_started_at"] = time.time()
+    runtime_settings["startup_sync_ready_since"] = None
+    runtime_settings["startup_sync_enabled"] = bool(SYNC_FOLLOWER_STARTUP_ENABLE)
+    if bool(SYNC_FOLLOWER_STARTUP_ENABLE):
+        _set_startup_sync_state(False, "waiting", "startup sync initializing")
+    else:
+        _set_startup_sync_state(True, "disabled", "")
+
     last_print_time = time.time()
+    last_startup_sync_print_time = 0.0
     last_loop_time = time.time()
     t_udp = 0.0
     t_ui_copy = 0.0
@@ -766,11 +909,14 @@ def main():
         while True:
             loop_start = time.time()
 
+            _evaluate_startup_sync(loop_start)
+
             if leader_cmd_retries_remaining > 0 and loop_start >= next_leader_cmd_time:
                 attempt = (max(1, int(LEADER_STARTUP_CMD_RETRY_COUNT)) - leader_cmd_retries_remaining) + 1
                 total_attempts = max(1, int(LEADER_STARTUP_CMD_RETRY_COUNT))
                 try:
                     _send_leader_startup_commands()
+                    _send_follower_startup_commands()
                     if total_attempts > 1:
                         print(f"[LeaderCmd] Startup command attempt {attempt}/{total_attempts}")
                 except Exception as e:
@@ -896,6 +1042,13 @@ def main():
                 if print_parts:
                     print(" || ".join(print_parts))
                 last_print_time = current_time
+
+            startup_sync_status = str(runtime_settings.get("startup_sync_status", ""))
+            if startup_sync_status in ("waiting", "settling") and (current_time - last_startup_sync_print_time) > 1.0:
+                wait_reason = str(runtime_settings.get("startup_sync_wait_reason", ""))
+                if wait_reason:
+                    print(f"[StartupSync] {startup_sync_status}: {wait_reason}")
+                last_startup_sync_print_time = current_time
 
             time.sleep(0.01)
 

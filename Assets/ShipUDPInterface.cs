@@ -24,6 +24,11 @@ public class ShipUDPInterface : MonoBehaviour
     [Header("動力參數")]
     public float moveForce = 20000.0f;
     public float turnTorque = 20000.0f;
+    public bool enableThrottleSpeedRamp = true;
+    [Tooltip("Normalized throttle units per second while ramping up toward the latest command.")]
+    public float throttleRampUpRate = 0.65f;
+    [Tooltip("Normalized throttle units per second while ramping down toward the latest command.")]
+    public float throttleRampDownRate = 1.2f;
 
     [Header("啟動時原地待命")]
     public bool holdSpawnPoseUntilLeaderMoves = true;
@@ -72,6 +77,9 @@ public class ShipUDPInterface : MonoBehaviour
         public string cmd;
         public string mode;
         public float speed;
+        public bool enable_speed_ramp;
+        public float trajectory_acceleration;
+        public float trajectory_initial_speed;
         public float circle_radius;
         public float triangle_side_length;
         public float rectangle_size_x;
@@ -87,12 +95,22 @@ public class ShipUDPInterface : MonoBehaviour
         public string mode;
     }
 
+    [System.Serializable]
+    public class DriveTuningCommand
+    {
+        public string cmd;
+        public bool enable_throttle_ramp;
+        public float throttle_ramp_up_rate;
+        public float throttle_ramp_down_rate;
+    }
+
     private UdpClient udpClient;
     private IPEndPoint remoteEndPoint;
     private Thread receiveThread;
     private bool isRunning = true;
     private float targetThrottle = 0f;
     private float targetSteer = 0f;
+    private float appliedThrottle = 0f;
     private Rigidbody rb;
     private Vector3 spawnPosition;
     private Quaternion spawnRotation;
@@ -101,6 +119,7 @@ public class ShipUDPInterface : MonoBehaviour
     void Start()
     {
         rb = GetComponent<Rigidbody>();
+        appliedThrottle = 0f;
         spawnPosition = transform.position;
         spawnRotation = transform.rotation;
         remoteEndPoint = new IPEndPoint(IPAddress.Parse(pythonIP), sendPort);
@@ -120,57 +139,20 @@ public class ShipUDPInterface : MonoBehaviour
                     if (cmode != null && (cmode.cmd ?? "") == "set_control_mode")
                     {
                         Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
-                        SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
-                        if (sm != null)
-                        {
-                            if ((cmode.mode ?? "").ToLower() == "keyboard")
-                            {
-                                sm.controlMode = SimpleMove.ControlMode.Keyboard;
-                                Debug.Log($"[ShipUDPInterface] Applied startup control mode Keyboard to {targetTransform.name}");
-                            }
-                            else
-                            {
-                                sm.controlMode = SimpleMove.ControlMode.Trajectory;
-                                sm.ResetTrajectory();
-                                Debug.Log($"[ShipUDPInterface] Applied startup control mode Trajectory to {targetTransform.name}");
-                            }
-                        }
+                        ApplyControlModeCommand(targetTransform, cmode, "[ShipUDPInterface]");
                     }
 
                     TrajectoryCommand tcmd = JsonUtility.FromJson<TrajectoryCommand>(text);
                     if (tcmd != null && (tcmd.cmd ?? "") == "set_trajectory")
                     {
                         Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
-                        SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
-                        if (sm != null)
-                        {
-                            sm.controlMode = SimpleMove.ControlMode.Trajectory;
-                            switch ((tcmd.mode ?? "").ToLower())
-                            {
-                                case "circle":
-                                    sm.trajectoryMode = SimpleMove.TrajectoryMode.Circle;
-                                    break;
-                                case "triangle":
-                                    sm.trajectoryMode = SimpleMove.TrajectoryMode.Triangle;
-                                    break;
-                                case "rectangle":
-                                    sm.trajectoryMode = SimpleMove.TrajectoryMode.Rectangle;
-                                    break;
-                                default:
-                                    sm.trajectoryMode = SimpleMove.TrajectoryMode.Straight;
-                                    break;
-                            }
-                            if (tcmd.speed > 0f) sm.trajectorySpeed = tcmd.speed;
-                            if (tcmd.circle_radius > 0f) sm.circleRadius = tcmd.circle_radius;
-                            if (tcmd.triangle_side_length > 0f) sm.triangleSideLength = tcmd.triangle_side_length;
-                            if (tcmd.rectangle_size_x > 0f && tcmd.rectangle_size_y > 0f) sm.rectangleSize = new Vector2(tcmd.rectangle_size_x, tcmd.rectangle_size_y);
-                            sm.loopTrajectory = tcmd.loop;
-                            if (tcmd.reset)
-                            {
-                                sm.ResetTrajectory();
-                            }
-                            Debug.Log($"[ShipUDPInterface] Applied startup trajectory to {targetTransform.name}: mode={tcmd.mode} speed={tcmd.speed}");
-                        }
+                        ApplyTrajectoryCommand(targetTransform, tcmd, text, "[ShipUDPInterface]");
+                    }
+
+                    DriveTuningCommand dcmd = JsonUtility.FromJson<DriveTuningCommand>(text);
+                    if (dcmd != null && (dcmd.cmd ?? "") == "set_drive_tuning")
+                    {
+                        ApplyDriveTuningCommand(dcmd, text, "[ShipUDPInterface]");
                     }
 
                     // Optionally remove the startup file after applying
@@ -224,57 +206,20 @@ public class ShipUDPInterface : MonoBehaviour
                         if (cmode != null && (cmode.cmd ?? "") == "set_control_mode")
                         {
                             Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
-                            SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
-                            if (sm != null)
-                            {
-                                if ((cmode.mode ?? "").ToLower() == "keyboard")
-                                {
-                                    sm.controlMode = SimpleMove.ControlMode.Keyboard;
-                                    Debug.Log($"[ShipUDPInterface] (coroutine) Applied startup control mode Keyboard to {targetTransform.name}");
-                                }
-                                else
-                                {
-                                    sm.controlMode = SimpleMove.ControlMode.Trajectory;
-                                    sm.ResetTrajectory();
-                                    Debug.Log($"[ShipUDPInterface] (coroutine) Applied startup control mode Trajectory to {targetTransform.name}");
-                                }
-                            }
+                            ApplyControlModeCommand(targetTransform, cmode, "[ShipUDPInterface] (coroutine)");
                         }
 
                         TrajectoryCommand tcmd = JsonUtility.FromJson<TrajectoryCommand>(text);
                         if (tcmd != null && (tcmd.cmd ?? "") == "set_trajectory")
                         {
                             Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
-                            SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
-                            if (sm != null)
-                            {
-                                sm.controlMode = SimpleMove.ControlMode.Trajectory;
-                                switch ((tcmd.mode ?? "").ToLower())
-                                {
-                                    case "circle":
-                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Circle;
-                                        break;
-                                    case "triangle":
-                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Triangle;
-                                        break;
-                                    case "rectangle":
-                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Rectangle;
-                                        break;
-                                    default:
-                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Straight;
-                                        break;
-                                }
-                                if (tcmd.speed > 0f) sm.trajectorySpeed = tcmd.speed;
-                                if (tcmd.circle_radius > 0f) sm.circleRadius = tcmd.circle_radius;
-                                if (tcmd.triangle_side_length > 0f) sm.triangleSideLength = tcmd.triangle_side_length;
-                                if (tcmd.rectangle_size_x > 0f && tcmd.rectangle_size_y > 0f) sm.rectangleSize = new Vector2(tcmd.rectangle_size_x, tcmd.rectangle_size_y);
-                                sm.loopTrajectory = tcmd.loop;
-                                if (tcmd.reset)
-                                {
-                                    sm.ResetTrajectory();
-                                }
-                                Debug.Log($"[ShipUDPInterface] (coroutine) Applied startup trajectory to {targetTransform.name}: mode={tcmd.mode} speed={tcmd.speed}");
-                            }
+                            ApplyTrajectoryCommand(targetTransform, tcmd, text, "[ShipUDPInterface] (coroutine)");
+                        }
+
+                        DriveTuningCommand dcmd = JsonUtility.FromJson<DriveTuningCommand>(text);
+                        if (dcmd != null && (dcmd.cmd ?? "") == "set_drive_tuning")
+                        {
+                            ApplyDriveTuningCommand(dcmd, text, "[ShipUDPInterface] (coroutine)");
                         }
 
                         try { File.Delete(startupPath); } catch {}
@@ -375,23 +320,13 @@ public class ShipUDPInterface : MonoBehaviour
                         if (cmode != null && cmode.cmd == "set_control_mode")
                         {
                             SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
-                            if (sm != null)
+                            if (sm == null)
                             {
-                                if ((cmode.mode ?? "").ToLower() == "keyboard")
-                                {
-                                    sm.controlMode = SimpleMove.ControlMode.Keyboard;
-                                    Debug.Log($"[ShipUDPInterface] Applied control mode Keyboard to {targetTransform.name}");
-                                }
-                                else
-                                {
-                                    sm.controlMode = SimpleMove.ControlMode.Trajectory;
-                                    sm.ResetTrajectory();
-                                    Debug.Log($"[ShipUDPInterface] Applied control mode Trajectory to {targetTransform.name}");
-                                }
+                                Debug.LogWarning($"[ShipUDPInterface] Received set_control_mode but SimpleMove not found on {targetTransform.name}");
                             }
                             else
                             {
-                                Debug.LogWarning($"[ShipUDPInterface] Received set_control_mode but SimpleMove not found on {targetTransform.name}");
+                                ApplyControlModeCommand(targetTransform, cmode, "[ShipUDPInterface]");
                             }
                         }
 
@@ -399,38 +334,16 @@ public class ShipUDPInterface : MonoBehaviour
                         TrajectoryCommand tcmd = JsonUtility.FromJson<TrajectoryCommand>(text);
                         if (tcmd != null && tcmd.cmd == "set_trajectory")
                         {
-                            SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
-                            if (sm != null)
-                            {
-                                sm.controlMode = SimpleMove.ControlMode.Trajectory;
-                                switch ((tcmd.mode ?? "").ToLower())
-                                {
-                                    case "circle":
-                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Circle;
-                                        break;
-                                    case "triangle":
-                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Triangle;
-                                        break;
-                                    case "rectangle":
-                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Rectangle;
-                                        break;
-                                    default:
-                                        sm.trajectoryMode = SimpleMove.TrajectoryMode.Straight;
-                                        break;
-                                }
-                                if (tcmd.speed > 0f) sm.trajectorySpeed = tcmd.speed;
-                                if (tcmd.circle_radius > 0f) sm.circleRadius = tcmd.circle_radius;
-                                if (tcmd.triangle_side_length > 0f) sm.triangleSideLength = tcmd.triangle_side_length;
-                                if (tcmd.rectangle_size_x > 0f && tcmd.rectangle_size_y > 0f) sm.rectangleSize = new Vector2(tcmd.rectangle_size_x, tcmd.rectangle_size_y);
-                                sm.loopTrajectory = tcmd.loop;
-                                if (tcmd.reset)
-                                {
-                                    sm.ResetTrajectory();
-                                }
-                            }
+                            ApplyTrajectoryCommand(targetTransform, tcmd, text, "[ShipUDPInterface]");
+                        }
+
+                        DriveTuningCommand dcmd = JsonUtility.FromJson<DriveTuningCommand>(text);
+                        if (dcmd != null && dcmd.cmd == "set_drive_tuning")
+                        {
+                            ApplyDriveTuningCommand(dcmd, text, "[ShipUDPInterface]");
                         }
                         // If we handled a command, skip control parsing below
-                        if (text.Contains("set_trajectory") || text.Contains("set_control_mode")) continue;
+                        if (text.Contains("set_trajectory") || text.Contains("set_control_mode") || text.Contains("set_drive_tuning")) continue;
                     }
                     catch {}
                 }
@@ -447,7 +360,23 @@ public class ShipUDPInterface : MonoBehaviour
     {
         if (rb == null) return;
 
-        rb.AddRelativeForce(Vector3.up * targetThrottle * moveForce);
+        float throttleToApply = targetThrottle;
+        if (enableThrottleSpeedRamp)
+        {
+            float rampRate = targetThrottle > appliedThrottle ? throttleRampUpRate : throttleRampDownRate;
+            appliedThrottle = Mathf.MoveTowards(
+                appliedThrottle,
+                targetThrottle,
+                Mathf.Max(0f, rampRate) * Time.fixedDeltaTime
+            );
+            throttleToApply = appliedThrottle;
+        }
+        else
+        {
+            appliedThrottle = targetThrottle;
+        }
+
+        rb.AddRelativeForce(Vector3.up * throttleToApply * moveForce);
         rb.AddRelativeTorque(Vector3.forward * targetSteer * turnTorque);
 
         float currentSpeed = rb.velocity.magnitude;
@@ -480,6 +409,7 @@ public class ShipUDPInterface : MonoBehaviour
 
         targetThrottle = 0f;
         targetSteer = 0f;
+        appliedThrottle = 0f;
 
         Vector3 heldPosition = rb.position;
         heldPosition.x = spawnPosition.x;
@@ -493,6 +423,125 @@ public class ShipUDPInterface : MonoBehaviour
         heldVelocity.z = 0f;
         rb.velocity = heldVelocity;
         rb.angularVelocity = Vector3.zero;
+    }
+
+    void ApplyControlModeCommand(Transform targetTransform, ControlModeCommand cmode, string logPrefix)
+    {
+        if (targetTransform == null || cmode == null)
+        {
+            return;
+        }
+
+        SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
+        if (sm == null)
+        {
+            return;
+        }
+
+        if ((cmode.mode ?? "").ToLower() == "keyboard")
+        {
+            sm.controlMode = SimpleMove.ControlMode.Keyboard;
+            Debug.Log($"{logPrefix} Applied control mode Keyboard to {targetTransform.name}");
+        }
+        else
+        {
+            sm.controlMode = SimpleMove.ControlMode.Trajectory;
+            sm.ResetTrajectory();
+            Debug.Log($"{logPrefix} Applied control mode Trajectory to {targetTransform.name}");
+        }
+    }
+
+    void ApplyTrajectoryCommand(Transform targetTransform, TrajectoryCommand tcmd, string rawText, string logPrefix)
+    {
+        if (targetTransform == null || tcmd == null)
+        {
+            return;
+        }
+
+        SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
+        if (sm == null)
+        {
+            return;
+        }
+
+        sm.controlMode = SimpleMove.ControlMode.Trajectory;
+        switch ((tcmd.mode ?? "").ToLower())
+        {
+            case "circle":
+                sm.trajectoryMode = SimpleMove.TrajectoryMode.Circle;
+                break;
+            case "triangle":
+                sm.trajectoryMode = SimpleMove.TrajectoryMode.Triangle;
+                break;
+            case "rectangle":
+                sm.trajectoryMode = SimpleMove.TrajectoryMode.Rectangle;
+                break;
+            default:
+                sm.trajectoryMode = SimpleMove.TrajectoryMode.Straight;
+                break;
+        }
+
+        if (tcmd.speed > 0f) sm.trajectorySpeed = tcmd.speed;
+        if (tcmd.circle_radius > 0f) sm.circleRadius = tcmd.circle_radius;
+        if (tcmd.triangle_side_length > 0f) sm.triangleSideLength = tcmd.triangle_side_length;
+        if (tcmd.rectangle_size_x > 0f && tcmd.rectangle_size_y > 0f) sm.rectangleSize = new Vector2(tcmd.rectangle_size_x, tcmd.rectangle_size_y);
+        if (!string.IsNullOrEmpty(rawText))
+        {
+            if (rawText.Contains("\"enable_speed_ramp\""))
+            {
+                sm.enableTrajectorySpeedRamp = tcmd.enable_speed_ramp;
+            }
+            if (rawText.Contains("\"trajectory_acceleration\"") && tcmd.trajectory_acceleration >= 0f)
+            {
+                sm.trajectoryAcceleration = tcmd.trajectory_acceleration;
+            }
+            if (rawText.Contains("\"trajectory_initial_speed\"") && tcmd.trajectory_initial_speed >= 0f)
+            {
+                sm.trajectoryInitialSpeed = tcmd.trajectory_initial_speed;
+            }
+        }
+        sm.loopTrajectory = tcmd.loop;
+        if (tcmd.reset)
+        {
+            sm.ResetTrajectory();
+        }
+        else
+        {
+            sm.RefreshTrajectorySpeedState();
+        }
+
+        Debug.Log(
+            $"{logPrefix} Applied trajectory to {targetTransform.name}: mode={tcmd.mode} speed={tcmd.speed} ramp={(sm.enableTrajectorySpeedRamp ? "on" : "off")}"
+        );
+    }
+
+    void ApplyDriveTuningCommand(DriveTuningCommand dcmd, string rawText, string logPrefix)
+    {
+        if (dcmd == null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(rawText) && rawText.Contains("\"enable_throttle_ramp\""))
+        {
+            enableThrottleSpeedRamp = dcmd.enable_throttle_ramp;
+        }
+        if (!string.IsNullOrEmpty(rawText) && rawText.Contains("\"throttle_ramp_up_rate\"") && dcmd.throttle_ramp_up_rate >= 0f)
+        {
+            throttleRampUpRate = dcmd.throttle_ramp_up_rate;
+        }
+        if (!string.IsNullOrEmpty(rawText) && rawText.Contains("\"throttle_ramp_down_rate\"") && dcmd.throttle_ramp_down_rate >= 0f)
+        {
+            throttleRampDownRate = dcmd.throttle_ramp_down_rate;
+        }
+        if (!enableThrottleSpeedRamp)
+        {
+            appliedThrottle = targetThrottle;
+        }
+
+        Debug.Log(
+            $"{logPrefix} Applied drive tuning to {boatID}: throttle ramp={(enableThrottleSpeedRamp ? "on" : "off")} up={throttleRampUpRate} down={throttleRampDownRate}"
+        );
     }
 
     void OnApplicationQuit()

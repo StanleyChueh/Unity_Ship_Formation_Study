@@ -1,6 +1,6 @@
 import threading
 
-from .config import BOAT_SIDES, CAMERA_STREAMS, ENABLE_KALMAN_FILTER
+from .config import BOAT_SIDES, CAMERA_STREAMS, ENABLE_KALMAN_FILTER, SYNC_FOLLOWER_STARTUP_ENABLE
 
 
 vision_lock = threading.Lock()
@@ -9,6 +9,12 @@ frame_lock = threading.Lock()
 
 runtime_settings = {
     "enable_kalman_filter": ENABLE_KALMAN_FILTER,
+    "startup_sync_enabled": SYNC_FOLLOWER_STARTUP_ENABLE,
+    "startup_sync_released": not SYNC_FOLLOWER_STARTUP_ENABLE,
+    "startup_sync_ready_since": None,
+    "startup_sync_started_at": None,
+    "startup_sync_status": "disabled" if not SYNC_FOLLOWER_STARTUP_ENABLE else "waiting",
+    "startup_sync_wait_reason": "",
 }
 
 
@@ -21,6 +27,13 @@ def make_track_state(default_search_dir):
         "target_bbox": None,
         "target_area": 0.0,
         "target_center_offset": 0.0,
+        "target_kind": None,
+        "side_leader_detected": False,
+        "side_leader_area": 0.0,
+        "side_leader_center_offset": 0.0,
+        "side_follower_detected": False,
+        "side_follower_area": 0.0,
+        "side_follower_center_offset": 0.0,
         "target_depth": None,
         "target_depth_confidence": 0.0,
         "depth_status": "Depth disabled",
@@ -31,6 +44,7 @@ def make_track_state(default_search_dir):
         "last_known_offset": 0.0,
         "last_known_area": 0.0,
         "last_known_method": None,
+        "last_known_target_kind": None,
         "track_prev_measurement_time": 0.0,
         "track_prev_center_offset": 0.0,
         "track_prev_center_y": 0.0,
@@ -59,17 +73,21 @@ formation_targets = {
         "front_visual_initialized": False,
         "desired_front_offset": 0.0,
         "desired_front_area": 0.0,
+        "desired_front_target_kind": None,
         "side_visual_initialized": False,
         "desired_side_offset": 0.0,
         "desired_side_area": 0.0,
+        "desired_side_target_kind": None,
     },
     "Right": {
         "front_visual_initialized": False,
         "desired_front_offset": 0.0,
         "desired_front_area": 0.0,
+        "desired_front_target_kind": None,
         "side_visual_initialized": False,
         "desired_side_offset": 0.0,
         "desired_side_area": 0.0,
+        "desired_side_target_kind": None,
     },
 }
 

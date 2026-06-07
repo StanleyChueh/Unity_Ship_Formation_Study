@@ -1,1 +1,1 @@
-{"cmd": "set_trajectory", "mode": "Circle", "speed": 18.0, "circle_radius": 360.0, "triangle_side_length": 30.0, "rectangle_size_x": 36.0, "rectangle_size_y": 22.0, "loop": true, "reset": true}
+{"cmd": "set_trajectory", "mode": "Circle", "speed": 18.0, "enable_speed_ramp": true, "trajectory_acceleration": 4.0, "trajectory_initial_speed": 0.0, "circle_radius": 360.0, "triangle_side_length": 30.0, "rectangle_size_x": 36.0, "rectangle_size_y": 22.0, "loop": true, "reset": true}

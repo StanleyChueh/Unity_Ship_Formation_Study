@@ -26,8 +26,12 @@ public class SimpleMove : MonoBehaviour
     [Header("自動軌跡測試")]
     public TrajectoryMode trajectoryMode = TrajectoryMode.Circle;
     public float trajectorySpeed = 7.0f;
-    [Tooltip("Acceleration (m/s^2) used to ramp the leader from 0 to trajectorySpeed")]
-    public float trajectoryAcceleration = 2.0f;
+    [Tooltip("Enable gradual speed ramping for trajectory mode. Disable this for fixed-speed leader experiments.")]
+    public bool enableTrajectorySpeedRamp = true;
+    [Tooltip("Acceleration (m/s^2) used to ramp toward trajectorySpeed when speed ramping is enabled.")]
+    public float trajectoryAcceleration = 12.0f;
+    [Tooltip("Starting speed used when a trajectory begins while ramping is enabled.")]
+    public float trajectoryInitialSpeed = 0.0f;
     public float straightLeadInDistance = 25.0f;
     public float circleRadius = 18.0f;
     public float triangleSideLength = 30.0f;
@@ -63,7 +67,7 @@ public class SimpleMove : MonoBehaviour
     void OnEnable()
     {
         travelledDistance = 0.0f;
-        currentTrajectorySpeed = 0.0f;
+        ResetTrajectorySpeed();
     }
 
     // Allow external scripts to reset/re-anchor the trajectory origin
@@ -71,6 +75,20 @@ public class SimpleMove : MonoBehaviour
     {
         travelledDistance = 0.0f;
         CacheSpawnFrame();
+        ResetTrajectorySpeed();
+    }
+
+    public void RefreshTrajectorySpeedState()
+    {
+        float targetSpeed = Mathf.Max(0f, trajectorySpeed);
+        if (!enableTrajectorySpeedRamp)
+        {
+            currentTrajectorySpeed = targetSpeed;
+            return;
+        }
+
+        float startSpeed = Mathf.Clamp(trajectoryInitialSpeed, 0f, targetSpeed);
+        currentTrajectorySpeed = Mathf.Clamp(currentTrajectorySpeed, startSpeed, targetSpeed);
     }
 
     void FixedUpdate()
@@ -130,9 +148,19 @@ public class SimpleMove : MonoBehaviour
 
     void RunTrajectoryControl()
     {
-        // Ramp current speed towards the configured trajectorySpeed
         float targetSpeed = Mathf.Max(0f, trajectorySpeed);
-        currentTrajectorySpeed = Mathf.MoveTowards(currentTrajectorySpeed, targetSpeed, trajectoryAcceleration * Time.fixedDeltaTime);
+        if (enableTrajectorySpeedRamp)
+        {
+            currentTrajectorySpeed = Mathf.MoveTowards(
+                currentTrajectorySpeed,
+                targetSpeed,
+                Mathf.Max(0f, trajectoryAcceleration) * Time.fixedDeltaTime
+            );
+        }
+        else
+        {
+            currentTrajectorySpeed = targetSpeed;
+        }
 
         travelledDistance += currentTrajectorySpeed * Time.fixedDeltaTime;
 
@@ -322,6 +350,18 @@ public class SimpleMove : MonoBehaviour
         }
 
         return Mathf.Repeat(distance, length);
+    }
+
+    void ResetTrajectorySpeed()
+    {
+        float targetSpeed = Mathf.Max(0f, trajectorySpeed);
+        if (!enableTrajectorySpeedRamp)
+        {
+            currentTrajectorySpeed = targetSpeed;
+            return;
+        }
+
+        currentTrajectorySpeed = Mathf.Clamp(trajectoryInitialSpeed, 0f, targetSpeed);
     }
 
     void UpdateWakeEffect()
