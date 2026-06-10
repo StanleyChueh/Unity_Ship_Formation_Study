@@ -6,20 +6,20 @@ using System.Threading;
 
 public class ShipUDPInterface : MonoBehaviour
 {
-    [Header("船隻身分")]
-    public string boatID = "Follower_1";
+    [Header("船隻身分 (多船控制必備)")]
+    public string boatID = "Follower_1"; // ★ 新增：讓 Python 知道這是哪艘船
 
     [Header("角色設定")]
-    public Transform leaderBoat;
+    public Transform leaderBoat; // ★ 請在這裡拖入 Leader 船的物件
 
-    [Header("網路設定")]
+    [Header("網路設定 (每艘小弟的 Port 必須不同!)")]
     public string pythonIP = "127.0.0.1";
-    public int sendPort = 5066;
-    public int receivePort = 5065;
+    public int sendPort = 5066;    // 傳給 Python 的通道
+    public int receivePort = 5065; // 接收 Python 指令的通道
 
     [Header("動力參數")]
-    public float moveForce = 20000.0f;
-    public float turnTorque = 20000.0f;
+    public float moveForce = 100000.0f;
+    public float turnTorque = 50000.0f;
 
     [Header("啟動時原地待命")]
     public bool holdSpawnPoseUntilLeaderMoves = true;
@@ -28,13 +28,17 @@ public class ShipUDPInterface : MonoBehaviour
     [Header("動態尾流特效控制")]
     public ParticleSystem wakeParticle;
     public float minSpeedToSpawn = 0.5f;
-    public float maxSpeed = 10f;
+    public float maxSpeed = 10f; // 記得設定成這艘船的最高 m/s
 
     [Header("特效動態範圍 (最小 ~ 最大)")]
-    public float minEmission = 5f;
-    public float maxEmission = 150f;
-    public float minSize = 0.5f;
-    public float maxSize = 1.5f;
+    public float minEmission = 5f;    // ★ 慢速時一秒只噴 5 顆
+    public float maxEmission = 150f;  // ★ 極速時一秒噴 150 顆
+    public float minSize = 0.5f;      // 慢速時水花比較小
+    public float maxSize = 1.5f;      // 極速時水花稍微變大
+    
+    [Header("UI 顯示設定")]
+    public Transform targetLeader;
+    public int uiPositionY = 20; // ★ 新增這行：用來控制文字的上下位置
 
     // --- 定義要傳給 Python 的資料結構 ---
     [System.Serializable]
@@ -69,6 +73,7 @@ public class ShipUDPInterface : MonoBehaviour
     private float targetThrottle = 0f;
     private float targetSteer = 0f;
     private Rigidbody rb;
+    private float speedKnots = 0f; 
     private Vector3 spawnPosition;
     private Quaternion spawnRotation;
     private bool startupHoldReleased = false;
@@ -122,7 +127,7 @@ public class ShipUDPInterface : MonoBehaviour
     {
         SimulationState state = new SimulationState();
         
-        state.id = boatID;
+        state.id = boatID; // ★ 填入這艘船的身分證
         
         // 1. 填寫 Follower (自己) 的資料
         state.x = transform.position.x;
@@ -132,6 +137,7 @@ public class ShipUDPInterface : MonoBehaviour
         // 抓取 Rigidbody 的物理速度 (m/s)
         if (rb != null) {
             state.speed = rb.velocity.magnitude; 
+            speedKnots = state.speed * 1.94384f; 
         }
 
         // 2. 填寫 Leader (老大) 的資料
@@ -176,15 +182,12 @@ public class ShipUDPInterface : MonoBehaviour
     void ApplyControl()
     {
         if (rb == null) return;
-
-        rb.AddRelativeForce(Vector3.up * targetThrottle * moveForce);
-        rb.AddRelativeTorque(Vector3.forward * targetSteer * turnTorque);
-
-        float currentSpeed = rb.velocity.magnitude;
-        if (currentSpeed > maxSpeed)
-        {
-            rb.velocity = rb.velocity.normalized * maxSpeed;
-        }
+        
+        // ★ 換回 Vector3.up！對你這艘歪掉的船來說，Up 才是往前！
+        rb.AddRelativeForce(Vector3.up * targetThrottle * moveForce); 
+        
+        // ★ 換回 Vector3.forward！這才是這艘船正確的轉向軸！
+        rb.AddRelativeTorque(Vector3.forward * targetSteer * turnTorque);      
     }
 
     bool ShouldHoldSpawnPose()
@@ -230,5 +233,22 @@ public class ShipUDPInterface : MonoBehaviour
         isRunning = false;
         if (udpClient != null) udpClient.Close();
         if (receiveThread != null) receiveThread.Abort();
+    }
+
+    void OnGUI()
+    {
+        GUIStyle style = new GUIStyle();
+        style.fontSize = 35;
+        style.normal.textColor = Color.white;
+        style.fontStyle = FontStyle.Bold;
+
+        float distance = 0f;
+        if (targetLeader != null) {
+            distance = Vector3.Distance(transform.position, targetLeader.position);
+        }
+
+        // 為了避免兩艘船的 UI 疊在一起，我們把 Boat ID 也印出來
+        // 把原本的 20 換成 uiPositionY
+        // GUI.Label(new Rect(20, uiPositionY, 800, 50), $"[{boatID}] 船速: {speedKnots:F2} 節 | 距離leader: {distance:F1} m", style);
     }
 }
