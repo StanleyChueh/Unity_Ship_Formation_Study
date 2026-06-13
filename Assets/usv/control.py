@@ -441,14 +441,14 @@ def process_boat_vision_based(sock, tx_port, side):
             )
 
         side_offset_error = side_control_offset - desired_side_offset
-        if abs(side_offset_error) > SIDE_STEER_DEADZONE_H:
+        if SIDE_STEER_ENABLED and abs(side_offset_error) > SIDE_STEER_DEADZONE_H:
             side_steer_bias = clamp(
                 side_offset_error * SIDE_TRACK_STEER_KP * SIDE_TRACK_STEER_SIGN_BY_BOAT[side],
                 -SIDE_TRACK_MAX_STEER_BIAS,
                 SIDE_TRACK_MAX_STEER_BIAS,
             )
 
-        if side == "Right" and edge_edge_factor > 0.0:
+        if SIDE_STEER_ENABLED and side == "Right" and edge_edge_factor > 0.0:
             side_steer_bias = clamp(
                 side_steer_bias * right_edge_recovery_gain,
                 -SIDE_TRACK_MAX_STEER_BIAS,
@@ -672,7 +672,7 @@ def process_boat_vision_based(sock, tx_port, side):
                 throttle = max(throttle * STALE_TARGET_THROTTLE_SCALE, SEARCH_FORWARD_THROTTLE)
 
     else:
-        side_chase_available = side_pred_ok and side_target_kind in ("leader", "follower")
+        side_chase_available = SIDE_STEER_ENABLED and side_pred_ok and side_target_kind in ("leader", "follower")
 
         if side_chase_available:
             steer = clamp(side_steer_bias / max(FRONT_PRIORITY_NO_FRONT_STEER_SCALE, 1e-5), -SEARCH_MODE_STEER, SEARCH_MODE_STEER)
@@ -776,6 +776,15 @@ def process_boat_vision_based(sock, tx_port, side):
             "formation_error": formation_error,
             "startup_sync_hold": True,
             "startup_sync_status": startup_sync_status,
+            # pass through world coordinates (Unity provides these in the UDP state)
+            "x": float(state.get("x", 0.0)),
+            "z": float(state.get("z", 0.0)),
+            "yaw": float(state.get("yaw", 0.0)),
+            "leader_x": float(state.get("leader_x", 0.0)),
+            "leader_z": float(state.get("leader_z", 0.0)),
+            "leader_yaw": float(state.get("leader_yaw", 0.0)),
+            "leader_forward_x": float(state.get("leader_forward_x", 0.0)),
+            "leader_forward_z": float(state.get("leader_forward_z", 0.0)),
         }
 
     # Enforce a conservative minimum forward throttle when the front target
@@ -789,6 +798,7 @@ def process_boat_vision_based(sock, tx_port, side):
         throttle = max(throttle, float(SEARCH_FORWARD_THROTTLE))
 
     throttle = clamp(throttle, 0.0, throttle_ceiling)
+    throttle = blend_value(_LAST_THROTTLE.get(side, throttle), throttle, float(THROTTLE_SMOOTH_ALPHA))
     _LAST_THROTTLE[side] = throttle
 
     # Keep both followers heading straight during startup window.
@@ -844,4 +854,13 @@ def process_boat_vision_based(sock, tx_port, side):
         "formation_error": formation_error,
         "startup_sync_hold": False,
         "startup_sync_status": startup_sync_status,
+        # pass through world coordinates (Unity provides these in the UDP state)
+        "x": float(state.get("x", 0.0)),
+        "z": float(state.get("z", 0.0)),
+        "yaw": float(state.get("yaw", 0.0)),
+        "leader_x": float(state.get("leader_x", 0.0)),
+        "leader_z": float(state.get("leader_z", 0.0)),
+        "leader_yaw": float(state.get("leader_yaw", 0.0)),
+        "leader_forward_x": float(state.get("leader_forward_x", 0.0)),
+        "leader_forward_z": float(state.get("leader_forward_z", 0.0)),
     }

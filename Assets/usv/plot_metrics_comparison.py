@@ -8,15 +8,30 @@ import matplotlib.pyplot as plt
 from matplotlib import rcParams
 
 
+try:
+    import usv.config as config
+except Exception:
+    try:
+        import config
+    except Exception:
+        config = None
+
+# Base metrics (follower detection will be inserted below if enabled)
 METRICS = [
     ("leader_det_rate_pct", "Leader Detection Rate (%)"),
-    ("follower_det_rate_pct", "Follower Detection Rate (%)"),
     ("stale_rate_pct", "Stale Rate (%)"),
     ("dsteer_mean_abs", "Steer Jerkiness (|ΔSteer|/sample)"),
     ("dthr_mean_abs", "Throttle Jerkiness (|ΔThrottle|/sample)"),
     ("mean_distance", "Mean Distance (a.u.)"),
     ("mean_formation_error", "Formation Error (norm.)"),
+    ("mean_formation_iou", "Formation IoU (mean)"),
+    ("mean_per_boat_rms_m", "Per-Boat RMS (m)"),
+    ("mean_centroid_offset_m", "Centroid Offset (m)"),
 ]
+
+# Insert follower detection metric only when side/follower detection is enabled
+if config is None or not hasattr(config, "ENABLE_SIDE_DETECTION") or getattr(config, "ENABLE_SIDE_DETECTION"):
+    METRICS.insert(1, ("follower_det_rate_pct", "Follower Detection Rate (%)"))
 
 
 def classify_kalman(ratio):
@@ -61,8 +76,16 @@ def read_summary_rows(csv_path):
                     "dsteer_mean_abs": float(r["dsteer_mean_abs"]),
                     "dthr_mean_abs": float(r["dthr_mean_abs"]),
                     "mean_distance": float(r.get("mean_distance", 0.0)),
+                    "mean_speed_mps": float(r.get("mean_speed_mps", r.get("speed_mps", 0.0))),
+                    "max_speed_mps": float(r.get("max_speed_mps", 0.0)),
                     "min_distance": float(r.get("min_distance", 0.0)),
                     "mean_formation_error": float(r.get("mean_formation_error", 0.0)),
+                    "mean_formation_iou": float(r.get("mean_formation_iou", 0.0)),
+                    "std_formation_iou": float(r.get("std_formation_iou", 0.0)),
+                    "mean_per_boat_rms_m": float(r.get("mean_per_boat_rms_m", 0.0)),
+                    "std_per_boat_rms_m": float(r.get("std_per_boat_rms_m", 0.0)),
+                    "mean_centroid_offset_m": float(r.get("mean_centroid_offset_m", 0.0)),
+                    "std_centroid_offset_m": float(r.get("std_centroid_offset_m", 0.0)),
                     "near_miss_count": float(r.get("near_miss_count", 0.0)),
                     "kalman_label": classify_kalman(float(r["kalman_on_ratio"])),
                 }

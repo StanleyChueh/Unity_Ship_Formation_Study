@@ -42,6 +42,17 @@ class KalmanFilter:
         self.last_meas = np.array([offset, area], dtype=float)
         self.last_dt = None
 
+    def _adaptive_measurement_scale(self, residual):
+        """Scale measurement noise up for large innovations (soft outlier rejection)."""
+        if residual is None or self.x is None:
+            return 1.0
+        offset_residual = abs(float(residual[0]))
+        area_ref = max(1.0, abs(float(self.x[2])))
+        area_residual = abs(float(residual[1])) / area_ref
+        motion_term = (offset_residual / 0.10) + (area_residual / 0.30)
+        scale = 1.0 + float(KF_ADAPTIVE_RESIDUAL_GAIN) * motion_term
+        return min(float(KF_MAX_PROCESS_SCALE), max(1.0, scale))
+
     def _adaptive_process_scale(self, dt, residual=None):
         scale = 1.0
 

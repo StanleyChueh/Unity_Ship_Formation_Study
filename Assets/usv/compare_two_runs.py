@@ -7,15 +7,27 @@ import matplotlib.pyplot as plt
 from matplotlib import rcParams
 
 
+# Try to import config to respect runtime flags (hide follower detection if disabled)
+try:
+    import usv.config as config
+except Exception:
+    try:
+        import config
+    except Exception:
+        config = None
+
 METRICS = [
     ("leader_det_rate_pct", "Leader Detection Rate (%)"),
-    ("follower_det_rate_pct", "Follower Detection Rate (%)"),
     ("stale_rate_pct", "Stale Rate (%)"),
     ("dsteer_mean_abs", "Steer Jerkiness (|ΔSteer|/sample)"),
     ("dthr_mean_abs", "Throttle Jerkiness (|ΔThrottle|/sample)"),
     ("mean_distance", "Mean Distance (a.u.)"),
     ("mean_formation_error", "Formation Error (norm.)"),
 ]
+
+# Insert follower detection metric only when side/follower detection is enabled
+if config is None or not hasattr(config, "ENABLE_SIDE_DETECTION") or getattr(config, "ENABLE_SIDE_DETECTION"):
+    METRICS.insert(1, ("follower_det_rate_pct", "Follower Detection Rate (%)"))
 
 
 # Publication defaults

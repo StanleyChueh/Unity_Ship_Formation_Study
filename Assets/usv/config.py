@@ -103,21 +103,21 @@ SYNC_FOLLOWER_STARTUP_ENABLE = True
 SYNC_FOLLOWER_STARTUP_REQUIRE_ALL_CAMERA_STREAMS = True
 SYNC_FOLLOWER_STARTUP_REQUIRE_FOLLOWER_STATE = True
 SYNC_FOLLOWER_STARTUP_REQUIRE_FRONT_VISUAL_LOCK = True
-SYNC_FOLLOWER_STARTUP_REQUIRE_SIDE_VISUAL_LOCK = True
+SYNC_FOLLOWER_STARTUP_REQUIRE_SIDE_VISUAL_LOCK = False
 SYNC_FOLLOWER_STARTUP_SETTLE_SEC = 0.50
 SYNC_FOLLOWER_STARTUP_TIMEOUT_SEC = 25.0
 SYNC_FOLLOWER_STARTUP_PACKET_STALE_SEC = 0.50
 
 # Kalman tracker tuning. Higher process noise makes the predictor respond
 # faster to turns; lower measurement noise trusts detections more.
-KF_PROC_POS_VAR = 2.5e-3
-KF_PROC_VEL_VAR = 8.0e-2
-KF_MEAS_OFFSET_VAR = 8.0e-3
-KF_MEAS_AREA_VAR = 12.0 #12.0
-KF_ADAPTIVE_MOTION_GAIN = 1.2
-KF_ADAPTIVE_RESIDUAL_GAIN = 1.8
-KF_MAX_PROCESS_SCALE = 12.0
-KF_INITIAL_VEL_BLEND = 0.35
+KF_PROC_POS_VAR = 1.0e-3
+KF_PROC_VEL_VAR = 5.0e-2      # balanced: enough velocity dynamics for circular path, less than original 8e-2
+KF_MEAS_OFFSET_VAR = 4.5e-2   # KF gain ≈0.18 vs EMA α=0.35 → KF passes ~half the YOLO noise for smoother steer
+KF_MEAS_AREA_VAR = 13.0        # close to original 12: area must track responsively for throttle to close the gap
+KF_ADAPTIVE_MOTION_GAIN = 0.8  # restored partial adaptive boost for turns
+KF_ADAPTIVE_RESIDUAL_GAIN = 1.2
+KF_MAX_PROCESS_SCALE = 9.0     # wider range so filter can still adapt on sharp circular turns
+KF_INITIAL_VEL_BLEND = 0.08    # keep low: prevents noisy finite-diff velocity from polluting KF state
 
 # Logging and Metrics Configuration
 # ---------------------------------------------------------
@@ -143,7 +143,7 @@ LEADER_TRAJECTORY_MODE = "Circle"
 LEADER_TRAJECTORY_SPEED = 18.0 #18.0
 LEADER_TRAJECTORY_SPEED_RAMP_ENABLE = True
 LEADER_TRAJECTORY_ACCELERATION = 4.0
-LEADER_TRAJECTORY_INITIAL_SPEED = 0.0
+LEADER_TRAJECTORY_INITIAL_SPEED = 4.0
 LEADER_TRAJECTORY_CIRCLE_RADIUS = 360.0
 LEADER_TRAJECTORY_TRIANGLE_SIDE = 30.0
 LEADER_TRAJECTORY_RECT_SIZE = (36.0, 22.0)
@@ -152,14 +152,18 @@ LEADER_TRAJECTORY_LOOP = True
 LEADER_TRAJECTORY_RESET_ON_APPLY = True
 # Follower throttle ramping keeps both followers from jumping instantly to
 # abrupt command changes during startup or catch-up maneuvers.
-FOLLOWER_THROTTLE_SPEED_RAMP_ENABLE = True
+FOLLOWER_THROTTLE_SPEED_RAMP_ENABLE = False
 FOLLOWER_THROTTLE_RAMP_UP_RATE = 0.65
 FOLLOWER_THROTTLE_RAMP_DOWN_RATE = 1.2
 # Formation scale multiplier for visual reference locking.
 # 1.0 keeps the originally observed spacing.
 # Values > 1.0 make the commanded formation larger by targeting a smaller
 # apparent boat size in the cameras.
-FORMATION_SCALE_MULTIPLIER = 1.15
+# Empirically the followers lock onto the leader at ~60 m at startup while
+# the geometric target triangle has 30 m sides.  Setting 0.5 commands each
+# follower to converge to half the locked distance (desired_area = locked_area
+# / scale² = 4 × locked_area → follower moves to locked_d × scale = 30 m).
+FORMATION_SCALE_MULTIPLIER = 0.5  # targets 30 m from 60 m startup (comment above explains: scale=0.5 → 30 m)
 # Retry leader startup command to avoid missing one-shot UDP when Unity enters
 # Play mode slightly later than Python start.
 # Total sends includes the first send (e.g. 5 means send immediately + 4 retries).
@@ -204,7 +208,7 @@ STALE_TARGET_STEER_SCALE = 0.85
 SEARCH_FORWARD_THROTTLE = 0.24
 SEARCH_STEER_GAIN = 0.85
 DISABLE_SEARCH_MODE = True
-VISUAL_FAR_BOOST_MAX = 0.16
+VISUAL_FAR_BOOST_MAX = 0.14  # reduced from 0.22: prevents overshoot oscillation past 30 m target
 VISUAL_SHRINK_BOOST_MAX = 0.08
 VISUAL_FAR_BOOST_EXPONENT = 1.35
 FOLLOW_FAR_MAX_THROTTLE = 0.9
@@ -218,9 +222,12 @@ SIDE_PRIORITY_SCALE_WHEN_FAR = 0.35
 FAR_VISUAL_FAR_BOOST_MULTIPLIER = 2.0
 # When leader is far, increase pair-catchup boost by this multiplier (clamped to max).
 PAIR_CATCHUP_MULTIPLIER_WHEN_FAR = 1.5
-PREDICTION_HORIZON_SEC = 0.25
-PREDICTION_OFFSET_BLEND = 0.15
-PREDICTION_AREA_BLEND = 0.0
+PREDICTION_HORIZON_SEC = 0.03   # short lookahead: provides turn prediction without amplifying velocity noise
+# How much of the Kalman/predicted offset is blended into the steer error.
+# Raised to 0.70 so the smoothed Kalman estimate dominates raw YOLO noise.
+PREDICTION_OFFSET_BLEND = 0.70
+# How much of the Kalman/predicted area is blended into throttle control.
+PREDICTION_AREA_BLEND = 0.50
 PREDICTION_VELOCITY_ALPHA = 0.20
 PREDICTION_STALE_DECAY = 0.88
 PREDICTION_MAX_OFFSET_DELTA = 0.35
@@ -229,7 +236,7 @@ PREDICTION_IDLE_DECAY = 0.60
 PREDICTION_MIN_OFFSET_STEP = 0.012
 PREDICTION_MIN_VERTICAL_STEP = 0.010
 PREDICTION_MIN_AREA_RATIO_STEP = 0.045
-PREDICTION_CONTROL_MIN_CONF = 0.32
+PREDICTION_CONTROL_MIN_CONF = 0.20
 
 # How many consecutive frames area must exceed target_max before zeroing throttle
 AREA_PERSISTENCE_FRAMES = 3
@@ -291,9 +298,15 @@ FRONT_PRIORITY_CONFIDENCE = 0.35
 FRONT_PRIORITY_STALE_SCALE = 0.25
 FRONT_PRIORITY_NO_FRONT_STEER_SCALE = 0.20
 
+# Disable side-camera steer contribution entirely.  The side camera steer bias
+# opposes the front-camera correction (positive feedback) for whichever follower
+# is on the outside of a curve, causing hunting oscillations in both straight
+# and circular trajectories.  Side camera is still used for throttle (distance
+# control).  Set True to re-enable if the geometry changes.
+SIDE_STEER_ENABLED = False
 SIDE_TRACK_STEER_KP = 0.50
 SIDE_TRACK_MAX_STEER_BIAS = 0.10
-SIDE_TRACK_MAX_THROTTLE_BIAS = 0.14
+SIDE_TRACK_MAX_THROTTLE_BIAS = 0.0   # disabled: side-cam area fluctuates widely in circle, causing throttle oscillation
 SIDE_TRACK_AREA_GAIN = 0.18
 SIDE_STEER_DEADZONE_H = 0.05
 SIDE_STALE_BIAS_SCALE = 0.72
@@ -313,7 +326,7 @@ STALE_TRACK_STEER_GAIN = 0.80
 STALE_TRACK_THROTTLE_GAIN = 0.80
 VISION_FRONT_TARGET_OFFSET = 0.0
 VISION_SIDE_TARGET_OFFSET = 0.0
-VISION_AREA_ERROR_DEADZONE_RATIO = 0.08
+VISION_AREA_ERROR_DEADZONE_RATIO = 0.12
 VISION_FRONT_AREA_TOLERANCE_RATIO = 0.14
 VISION_SIDE_AREA_TOLERANCE_RATIO = 0.16
 VISION_FRONT_AREA_GAIN = 0.72
@@ -342,10 +355,10 @@ VISION_TURN_SPEED_CEILING = 0.82
 VISION_TURN_SLOWDOWN_START = 0.55
 VISION_TURN_SLOWDOWN_MIN_SCALE = 0.78
 VISION_TURN_FORMATION_AREA_BOOST = 0.18
-VISION_TURN_FORMATION_STEER_BOOST = 0.08
+VISION_TURN_FORMATION_STEER_BOOST = 0.0   # disabled: was amplifying steer oscillations in circular trajectories
 VISION_TURN_FORMATION_THROTTLE_SCALE = 0.88
-VISION_TURN_PREDICTIVE_STEER_GAIN = 0.95
-VISION_TURN_PREDICTIVE_STEER_MAX = 0.24
+VISION_TURN_PREDICTIVE_STEER_GAIN = 0.12   # reduced from 0.95: was amplifying velocity noise as dominant steer term
+VISION_TURN_PREDICTIVE_STEER_MAX = 0.05   # reduced from 0.24: P-term now handles steady-state; predictive is supplement only
 VISION_TURN_PREDICTIVE_THROTTLE_GAIN = 0.14
 VISION_TURN_PREDICTIVE_THROTTLE_MAX = 0.12
 VISION_TURN_PREDICTIVE_SPEED_CEILING = 0.95
@@ -363,16 +376,16 @@ STARTUP_STEER_LOCK_ENABLE = True
 STARTUP_STEER_LOCK_SEC = 2.0
 
 KV_STEER = 1.02
-STEER_DEADZONE_H = 0.06
-FINAL_STEER_DEADZONE_H = 0.045
-STEER_SLEW_RATE_PER_SEC = 4.0
-# Allow a lower slew rate for the Right follower to reduce abrupt steer changes.
-# Set this lower than `STEER_SLEW_RATE_PER_SEC` to make Right steering smoother.
-RIGHT_STEER_SLEW_RATE_PER_SEC = 4.0
+STEER_DEADZONE_H = 0.020    # reduced from 0.06: P-term must be active for gentle-circle steer (~0.025 error)
+FINAL_STEER_DEADZONE_H = 0.012  # reduced from 0.045: must be < P-term steer so output passes the filter
+STEER_SLEW_RATE_PER_SEC = 2.0   # reduced from 4.0 to cap command rate and reduce jerkiness
+# Right follower uses the same rate; both benefit from the lower ceiling.
+RIGHT_STEER_SLEW_RATE_PER_SEC = 2.0
 SEARCH_MODE_STEER = 0.5
 KV_THROTTLE_P = 0.00014
 FOLLOW_BASE_THROTTLE = 0.40
-FOLLOW_MAX_THROTTLE = 0.62
+FOLLOW_MAX_THROTTLE = 0.68  # reduced from 0.75: prevents overshoot oscillation at target
+THROTTLE_SMOOTH_ALPHA = 0.40  # EMA toward new throttle each step; smooths sudden throttle jumps
 
 # Area thresholds (How close/far the target is based on its image area, used for various heuristics and tuning)
 YOLO_AREA_OPT = 250000

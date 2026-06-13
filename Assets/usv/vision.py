@@ -491,12 +491,12 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
                             state["track_offset_velocity"] = blend_value(
                                 state.get("track_offset_velocity", 0.0),
                                 raw_kf_offset_velocity,
-                                0.75,
+                                0.30,
                             )
                             state["track_area_velocity"] = blend_value(
                                 state.get("track_area_velocity", 0.0),
                                 raw_kf_area_velocity,
-                                0.75,
+                                0.30,
                             )
                             predicted_offset = clamp(
                                 float(sx[0]) + (state["track_offset_velocity"] * PREDICTION_HORIZON_SEC),
@@ -555,12 +555,12 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
                             state["track_offset_velocity"] = blend_value(
                                 state.get("track_offset_velocity", 0.0),
                                 float(sx[1]) - _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset),
-                                0.75,
+                                0.30,
                             )
                             state["track_area_velocity"] = blend_value(
                                 state.get("track_area_velocity", 0.0),
                                 float(sx[3]),
-                                0.75,
+                                0.30,
                             )
                             predicted_offset = clamp(
                                 float(sx[0]) + (state["track_offset_velocity"] * PREDICTION_HORIZON_SEC),

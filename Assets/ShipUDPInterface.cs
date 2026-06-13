@@ -61,6 +61,8 @@ public class ShipUDPInterface : MonoBehaviour
         public float leader_x;
         public float leader_z;
         public float leader_yaw;
+        public float leader_forward_x;
+        public float leader_forward_z;
         public float leader_speed;
     }
 
@@ -115,6 +117,30 @@ public class ShipUDPInterface : MonoBehaviour
     private Vector3 spawnPosition;
     private Quaternion spawnRotation;
     private bool startupHoldReleased = false;
+
+    Vector3 GetPlanarBoatForward(Transform boatTransform)
+    {
+        if (boatTransform == null)
+        {
+            return Vector3.forward;
+        }
+
+        Vector3 planarForward = boatTransform.TransformDirection(Vector3.up);
+        planarForward.y = 0f;
+
+        if (planarForward.sqrMagnitude < 1e-4f)
+        {
+            planarForward = boatTransform.forward;
+            planarForward.y = 0f;
+        }
+
+        if (planarForward.sqrMagnitude < 1e-4f)
+        {
+            planarForward = Vector3.forward;
+        }
+
+        return planarForward.normalized;
+    }
 
     void Start()
     {
@@ -280,6 +306,9 @@ public class ShipUDPInterface : MonoBehaviour
             state.leader_x = leaderBoat.position.x;
             state.leader_z = leaderBoat.position.z;
             state.leader_yaw = leaderBoat.eulerAngles.y;
+            Vector3 leaderForwardPlanar = GetPlanarBoatForward(leaderBoat);
+            state.leader_forward_x = leaderForwardPlanar.x;
+            state.leader_forward_z = leaderForwardPlanar.z;
 
             // Startup hold logic in Python needs to know when the leader has
             // actually begun moving, not just where it is.
