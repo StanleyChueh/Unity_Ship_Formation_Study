@@ -477,6 +477,9 @@ def process_boat_vision_based(sock, tx_port, side):
             side_steer_bias *= SIDE_STALE_BIAS_SCALE
             side_throttle_bias *= SIDE_STALE_BIAS_SCALE
 
+    # KF approach ratio: set inside if front_detected, used at the EMA site below.
+    _kf_approach_ratio = 0.0
+
     if front_detected:
         if front_method in ("YOLO", "FUSED"):
             if front_visual_ref_ready and desired_front_area > YOLO_AREA_MIN:
@@ -506,16 +509,23 @@ def process_boat_vision_based(sock, tx_port, side):
         )
         # If the leader looks small in the frame, treat it as "far" and
         # prefer chasing (reduce formation urgency and boost chase terms).
+        # When the formation reference is calibrated, derive the threshold dynamically
+        # from the desired_front_area so it scales with the actual camera geometry.
         try:
-            is_far = float(effective_area) < float(LEADER_FAR_AREA_THRESHOLD)
+            if front_visual_ref_ready and float(desired_front_area) > float(YOLO_AREA_MIN):
+                _far_threshold = float(desired_front_area) * float(LEADER_FAR_AREA_SCALE)
+            else:
+                _far_threshold = float(LEADER_FAR_AREA_THRESHOLD)
+            is_far = float(effective_area) < _far_threshold
         except Exception:
             is_far = False
         steer_error = effective_offset - desired_front_offset if front_visual_ref_ready else effective_offset
         predicted_area_ratio = normalize_area_error(target_opt, front_predicted_area)
         area_velocity_ratio = float(front_track_area_velocity) / max(float(target_opt), 1.0)
 
+        active_kv_steer = float(RIGHT_KV_STEER) if side == "Right" else float(KV_STEER)
         if abs(steer_error) > STEER_DEADZONE_H:
-            steer = clamp(steer_error * KV_STEER * steer_gain, -1.0, 1.0)
+            steer = clamp(steer_error * active_kv_steer * steer_gain, -1.0, 1.0)
         else:
             steer = 0.0
 
@@ -625,6 +635,19 @@ def process_boat_vision_based(sock, tx_port, side):
             area_velocity_ratio=area_velocity_ratio,
         )
         throttle = max(throttle, cruise_throttle)
+
+        # Leader-speed feedforward: when at (or near) target distance, set a minimum
+        # throttle proportional to the leader's current speed.  This prevents the
+        # coast-to-near-zero → fall-behind → max-throttle-chase oscillation cycle by
+        # providing a "soft landing" that keeps the follower matched to leader cruise speed.
+        if front_visual_ref_ready and front_area_error_ratio > -float(VISION_AREA_ERROR_DEADZONE_RATIO):
+            leader_ff = clamp(
+                float(state.get("leader_speed", 0.0)) * float(LEADER_SPEED_THROTTLE_FF),
+                0.0,
+                float(FOLLOW_MAX_THROTTLE) * 0.95,
+            )
+            throttle = max(throttle, leader_ff)
+
         throttle += side_throttle_bias
 
         turn_catchup_boost = compute_turn_catchup_boost(
@@ -670,6 +693,19 @@ def process_boat_vision_based(sock, tx_port, side):
             steer *= STALE_TARGET_STEER_SCALE
             if throttle > 0.0:
                 throttle = max(throttle * STALE_TARGET_THROTTLE_SCALE, SEARCH_FORWARD_THROTTLE)
+
+        # KF approach-rate damper: when KF is ON and area is GROWING (follower closing
+        # on the leader), subtract a D-term from throttle proportional to the approach
+        # rate to prevent bang-bang overshoot.  _kf_approach_ratio is also used below
+        # at the EMA site to boost alpha (faster decay) during approach.
+        if ENABLE_KALMAN_FILTER and front_visual_ref_ready and float(front_track_area_velocity) > 0.0:
+            _kf_approach_ratio = float(front_track_area_velocity) / max(float(target_opt), 1.0)
+            kf_d = clamp(
+                _kf_approach_ratio * float(KF_APPROACH_THROTTLE_D_GAIN),
+                0.0,
+                float(KF_APPROACH_THROTTLE_D_MAX),
+            )
+            throttle = max(0.0, throttle - kf_d)
 
     else:
         side_chase_available = SIDE_STEER_ENABLED and side_pred_ok and side_target_kind in ("leader", "follower")
@@ -798,7 +834,28 @@ def process_boat_vision_based(sock, tx_port, side):
         throttle = max(throttle, float(SEARCH_FORWARD_THROTTLE))
 
     throttle = clamp(throttle, 0.0, throttle_ceiling)
-    throttle = blend_value(_LAST_THROTTLE.get(side, throttle), throttle, float(THROTTLE_SMOOTH_ALPHA))
+    prev_throttle_ema = _LAST_THROTTLE.get(side, throttle)
+    throttle_alpha = float(RIGHT_THROTTLE_SMOOTH_ALPHA) if side == "Right" else float(THROTTLE_SMOOTH_ALPHA)
+    # KF alpha boost: when KF reports approach (area growing), anticipate the
+    # setpoint drop and begin decaying the EMA faster before it actually lands.
+    if _kf_approach_ratio > 0.0:
+        alpha_boost = clamp(
+            _kf_approach_ratio * float(KF_APPROACH_ALPHA_GAIN),
+            0.0,
+            float(KF_APPROACH_THROTTLE_ALPHA_MAX) - throttle_alpha,
+        )
+        throttle_alpha = throttle_alpha + alpha_boost
+    # Asymmetric EMA: throttle can fall faster than it rises.
+    # When the computed setpoint is below the current smoothed value the EMA
+    # alpha is scaled up so the command follows the setpoint promptly.
+    # This prevents EMA inertia from extending the overshoot window while
+    # keeping the slow-rise (ramp-up) direction smooth.
+    if throttle < prev_throttle_ema:
+        throttle_alpha = min(
+            float(THROTTLE_FAST_DECREASE_ALPHA_MAX),
+            throttle_alpha * float(THROTTLE_DECREASE_ALPHA_SCALE),
+        )
+    throttle = blend_value(prev_throttle_ema, throttle, throttle_alpha)
     _LAST_THROTTLE[side] = throttle
 
     # Keep both followers heading straight during startup window.

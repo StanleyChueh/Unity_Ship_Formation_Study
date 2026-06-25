@@ -37,7 +37,7 @@ from .state import (
 from .kalman import KalmanFilter
 
 
-def build_track_candidate(bbox, area, center_offset, center, method, target_kind=None):
+def build_track_candidate(bbox, area, center_offset, center, method, target_kind=None, det_conf=1.0):
     return {
         "bbox": bbox,
         "area": area,
@@ -45,6 +45,7 @@ def build_track_candidate(bbox, area, center_offset, center, method, target_kind
         "center": center,
         "method": method,
         "target_kind": target_kind,
+        "det_conf": float(det_conf),
     }
 
 
@@ -365,7 +366,7 @@ def _compute_ego_offset_velocity(ego_yaw_rate_dps, ego_speed_mps, center_offset)
     return clamp(yaw_term + speed_term, -PREDICTION_EGO_MAX_OFFSET_VEL, PREDICTION_EGO_MAX_OFFSET_VEL)
 
 
-def update_track_prediction(state, center_offset, center_y_norm, area, current_time, ego_speed_mps=0.0, ego_yaw_rate_dps=0.0):
+def update_track_prediction(state, center_offset, center_y_norm, area, current_time, ego_speed_mps=0.0, ego_yaw_rate_dps=0.0, det_conf=1.0):
     kalman_enabled = bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
 
     if not kalman_enabled:
@@ -463,7 +464,7 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
                     if hasattr(kf, "set_last_dt"):
                         kf.set_last_dt(dt)
                     kf.predict(dt)
-                    kf.update(center_offset, area)
+                    kf.update(center_offset, area, det_conf=det_conf)
                     sx = kf.state()
                     if sx is not None:
                         # Compute raw measured velocity for sign-consistency check
@@ -496,7 +497,7 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
                             state["track_area_velocity"] = blend_value(
                                 state.get("track_area_velocity", 0.0),
                                 raw_kf_area_velocity,
-                                0.30,
+                                0.45,  # increased from 0.30: faster area-velocity tracking feeds D-term sooner
                             )
                             predicted_offset = clamp(
                                 float(sx[0]) + (state["track_offset_velocity"] * PREDICTION_HORIZON_SEC),
@@ -533,7 +534,7 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
                     if hasattr(kf, "set_last_dt"):
                         kf.set_last_dt(dt)
                     kf.predict(dt)
-                    kf.update(center_offset, area)
+                    kf.update(center_offset, area, det_conf=det_conf)
                     sx = kf.state()
                     if sx is not None:
                         dt_meas = max(1e-3, current_time - prev_time)
@@ -830,6 +831,7 @@ def cv_processing_thread():
                         if area < YOLO_MIN_BOX_AREA or y1 < height * IGNORE_TOP_RATIO or y2 > height * (1.0 - IGNORE_BOTTOM_RATIO):
                             continue
 
+                        box_conf = float(box.conf[0])
                         yolo_display_detections.append(
                             {
                                 "bbox": (x1, y1, x2, y2),
@@ -841,6 +843,19 @@ def cv_processing_thread():
                         )
 
                         candidate_offset = (((x1 + x2) / 2.0) - (width / 2.0)) / (width / 2.0)
+
+                        # Hard false-positive gates (wave glitter / spurious detections).
+                        # Only active once a track is established so initial acquisition is unaffected.
+                        if has_recent_track and TRACK_GATE_ENABLE:
+                            if abs(candidate_offset - preferred_offset) > TRACK_GATE_MAX_OFFSET_DELTA:
+                                continue
+                            last_known_area_gate = prev_state.get("last_known_area", 0.0)
+                            if last_known_area_gate > 0.0 and (
+                                area > last_known_area_gate * TRACK_GATE_MAX_AREA_RATIO
+                                or area < last_known_area_gate / TRACK_GATE_MAX_AREA_RATIO
+                            ):
+                                continue
+
                         if role == "front":
                             if cls_id != YOLO_CLASS_LEADER:
                                 continue
@@ -861,6 +876,7 @@ def cv_processing_thread():
                                     center_point,
                                     "YOLO",
                                     target_kind="leader",
+                                    det_conf=box_conf,
                                 )
                         else:
                             if cls_id == YOLO_CLASS_LEADER:
@@ -876,6 +892,7 @@ def cv_processing_thread():
                                         ((x1 + x2) // 2, (y1 + y2) // 2),
                                         "YOLO",
                                         target_kind="leader",
+                                        det_conf=box_conf,
                                     )
                             elif cls_id == YOLO_CLASS_FOLLOWER:
                                 follower_score = area
@@ -890,7 +907,44 @@ def cv_processing_thread():
                                         ((x1 + x2) // 2, (y1 + y2) // 2),
                                         "FOLLOWER",
                                         target_kind="follower",
+                                        det_conf=box_conf,
                                     )
+
+                # Class-agnostic fallback: if the front camera lost its leader-class
+                # detection (e.g. YOLO mis-classified the leader as a follower under
+                # wave noise), do a second pass accepting any class within a tight
+                # position gate.  This recovers the track without accepting far-away
+                # wave glitter (which was already rejected by the hard offset gate above).
+                if (
+                    role == "front"
+                    and yolo_target is None
+                    and has_recent_track
+                    and TRACK_GATE_CLASS_AGNOSTIC_ENABLE
+                    and result is not None
+                    and result.boxes is not None
+                ):
+                    best_agnostic_score = -1.0
+                    for box in result.boxes:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        area_fb = (x2 - x1) * (y2 - y1)
+                        if area_fb < YOLO_MIN_BOX_AREA or y1 < height * IGNORE_TOP_RATIO or y2 > height * (1.0 - IGNORE_BOTTOM_RATIO):
+                            continue
+                        fb_offset = (((x1 + x2) / 2.0) - (width / 2.0)) / (width / 2.0)
+                        if abs(fb_offset - preferred_offset) > TRACK_GATE_CLASS_AGNOSTIC_OFFSET:
+                            continue
+                        fb_conf = float(box.conf[0])
+                        fb_score = area_fb * fb_conf
+                        if fb_score > best_agnostic_score:
+                            best_agnostic_score = fb_score
+                            yolo_target = build_track_candidate(
+                                (x1, y1, x2, y2),
+                                area_fb,
+                                fb_offset,
+                                ((x1 + x2) // 2, (y1 + y2) // 2),
+                                "YOLO",
+                                target_kind="leader",
+                                det_conf=fb_conf * 0.7,
+                            )
 
                 if role == "front":
                     wake_reference_bbox = yolo_target["bbox"] if yolo_target is not None else None
@@ -921,6 +975,7 @@ def cv_processing_thread():
                         detection_method = fused_target["method"]
                         target_kind = fused_target.get("target_kind", "leader")
                         fusion_wake_weight = fused_target.get("wake_weight", 0.0)
+                        det_conf_meas = fused_target.get("det_conf", 1.0)
                     elif yolo_target is not None:
                         best_box = yolo_target["bbox"]
                         best_area = yolo_target["area"]
@@ -928,12 +983,14 @@ def cv_processing_thread():
                         center_point = yolo_target["center"]
                         detection_method = yolo_target["method"]
                         target_kind = yolo_target.get("target_kind", "leader")
+                        det_conf_meas = yolo_target.get("det_conf", 1.0)
                     else:
                         best_box = None
                         best_area = 0.0
                         center_offset = 0.0
                         center_point = None
                         detection_method = None
+                        det_conf_meas = 1.0
                 else:
                     selected_side_target = select_side_track_candidate(
                         side_leader_target,
@@ -947,12 +1004,14 @@ def cv_processing_thread():
                         center_point = selected_side_target["center"]
                         detection_method = selected_side_target["method"]
                         target_kind = selected_side_target.get("target_kind")
+                        det_conf_meas = selected_side_target.get("det_conf", 1.0)
                     else:
                         best_box = None
                         best_area = 0.0
                         center_offset = 0.0
                         center_point = None
                         detection_method = None
+                        det_conf_meas = 1.0
 
                 current_time = time.time()
                 cache_entry = depth_cache[boat_side]
@@ -1026,6 +1085,7 @@ def cv_processing_thread():
                                 current_time,
                                 ego_speed_mps=ego_speed_mps,
                                 ego_yaw_rate_dps=ego_yaw_rate_dps,
+                                det_conf=det_conf_meas,
                             )
                         else:
                             if PREDICTION_ENABLE_SIDE_FOLLOWER:
@@ -1040,6 +1100,7 @@ def cv_processing_thread():
                                     current_time,
                                     ego_speed_mps=ego_speed_mps,
                                     ego_yaw_rate_dps=ego_yaw_rate_dps,
+                                    det_conf=det_conf_meas,
                                 )
                             else:
                                 # Side follower track: use direct measurement only (no velocity prediction)
@@ -1202,7 +1263,6 @@ def cv_processing_thread():
                         cv2.putText(display_frame, overlay_depth_status[:80], (text_x, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (80, 220, 255), 1)
                         if detection_method is not None:
                             cv2.putText(display_frame, f"Track: {role.upper()} {detection_method}", (text_x, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 0), 1)
-
                     with frame_lock:
                         display_frames[stream_name] = display_frame
                     display_times[stream_name] = current_time

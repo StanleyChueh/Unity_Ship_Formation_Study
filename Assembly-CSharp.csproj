@@ -66,6 +66,7 @@
   <ItemGroup>
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/fx_causticModule.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_trigger.cs" />
+    <Compile Include="Assets/WaveController.cs" />
     <Compile Include="Assets/IgniteCoders/Simple Water Shader/Info/Scripts/Readme.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/GUI/guiFPS.cs" />
     <Compile Include="Assets/FollowerCameraLookAt.cs" />
@@ -81,10 +82,12 @@
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/SuimonoObject.cs" />
     <Compile Include="Assets/NewBehaviourScript.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_ControllerOrbit.cs" />
+    <Compile Include="Assets/CameraWaveTilt.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/utility_ConvertToSurface.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/Suimono_UnderwaterFog.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/Suimono_ShorelineObject.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_ControllerCharacter.cs" />
+    <Compile Include="Assets/ShipStabilizer.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/ui_suimonoFps.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/SuimonoModule.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_InputController.cs" />

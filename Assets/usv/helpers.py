@@ -9,11 +9,6 @@ import cv2
 import numpy as np
 
 from .config import (
-    CAMERA_SHAKE_SPEED_GAIN,
-    CAMERA_WAVE_AMP_BASE,
-    CAMERA_WAVE_AMP_SPEED_GAIN,
-    CAMERA_WAVE_FREQ,
-    ENABLE_CAMERA_SHAKE,
     FINAL_STEER_DEADZONE_H,
     PREDICTION_ARROW_MIN_CONF,
     PREDICTION_ARROW_MIN_PIXELS,
@@ -135,32 +130,6 @@ def draw_labeled_box(frame, bbox, label, color, center=None, thickness=2):
         color,
         2,
     )
-
-# apply_camera_shake:
-#   Simulates camera shake by applying a dynamic affine transformation to the input frame.
-def apply_camera_shake(frame, boat_speed_mps, timestamp):
-    if frame is None or not ENABLE_CAMERA_SHAKE:
-        return frame
-
-    height, width = frame.shape[:2]
-    speed_knots = boat_speed_mps * 1.94384
-
-    horizontal_shake = int(speed_knots * CAMERA_SHAKE_SPEED_GAIN * 0.1 * np.sin(timestamp * 5.0))
-    wave_amplitude = CAMERA_WAVE_AMP_BASE + (speed_knots * CAMERA_WAVE_AMP_SPEED_GAIN)
-    vertical_shift = int(wave_amplitude * np.sin(timestamp * 2 * np.pi * CAMERA_WAVE_FREQ))
-
-    src_pts = np.float32([[0, 0], [width, 0], [0, height]])
-    dst_pts = np.float32([
-        [horizontal_shake, vertical_shift],
-        [width + horizontal_shake, vertical_shift],
-        [horizontal_shake, height + vertical_shift],
-    ])
-
-    try:
-        matrix = cv2.getAffineTransform(src_pts, dst_pts)
-        return cv2.warpAffine(frame, matrix, (width, height), borderMode=cv2.BORDER_REFLECT_101)
-    except Exception:
-        return frame
 
 # draw_prediction_arrow:
 #   Draws an arrow on the frame indicating the predicted movement direction and confidence.

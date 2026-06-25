@@ -61,10 +61,19 @@ from .config import (
     SYNC_FOLLOWER_STARTUP_PACKET_STALE_SEC,
     NEAR_MISS_DISTANCE_THRESHOLD_PX,
     PREDICTION_HORIZON_SEC,
+    WAVE_CONTROL_ENABLE,
+    WAVE_CONTROL_PORT,
+    SUIMONO_WAVE_HEIGHT,
+    SUIMONO_TURBULENCE,
+    SUIMONO_LARGE_WAVE_HEIGHT,
+    SUIMONO_LARGE_WAVE_SCALE,
+    SUIMONO_WAVE_SCALE,
+    SUIMONO_FLOW_SPEED,
+    SUIMONO_CAMERA_TILT_STRENGTH,
 )
 from .control import process_boat_vision_based
 from .formation_geometry import build_ideal_formation_points
-from .helpers import apply_camera_shake, make_status_frame
+from .helpers import make_status_frame
 from .state import (
     boat_comm_states,
     display_frames,
@@ -1240,6 +1249,34 @@ def _send_follower_startup_commands():
     send_sock.close()
 
 
+def _send_wave_settings():
+    """Send SUIMONO wave parameters to Unity's WaveController via UDP."""
+    if not WAVE_CONTROL_ENABLE:
+        return
+    cmd = {
+        "cmd": "set_wave",
+        "wave_height": float(SUIMONO_WAVE_HEIGHT),
+        "turbulence": float(SUIMONO_TURBULENCE),
+        "large_wave_height": float(SUIMONO_LARGE_WAVE_HEIGHT),
+        "large_wave_scale": float(SUIMONO_LARGE_WAVE_SCALE),
+        "wave_scale": float(SUIMONO_WAVE_SCALE),
+        "flow_speed": float(SUIMONO_FLOW_SPEED),
+        "camera_tilt_strength": float(SUIMONO_CAMERA_TILT_STRENGTH),
+    }
+    send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        send_sock.sendto(json.dumps(cmd).encode("utf-8"), (UDP_IP, int(WAVE_CONTROL_PORT)))
+        print(
+            f"[WaveCtrl] Sent wave settings → port {WAVE_CONTROL_PORT}: "
+            f"height={SUIMONO_WAVE_HEIGHT} turb={SUIMONO_TURBULENCE} "
+            f"lgH={SUIMONO_LARGE_WAVE_HEIGHT} tilt={SUIMONO_CAMERA_TILT_STRENGTH}"
+        )
+    except Exception as e:
+        print(f"[WaveCtrl] Failed to send wave settings: {e}")
+    finally:
+        send_sock.close()
+
+
 def _wait_for_follower_connections(timeout_sec, poll_interval_sec):
     timeout_sec = max(0.0, float(timeout_sec))
     poll_interval_sec = max(0.05, float(poll_interval_sec))
@@ -1434,6 +1471,9 @@ def main():
     if LEADER_AUTO_TRAJECTORY_ENABLE and str(LEADER_INITIAL_CONTROL_MODE).lower() == "trajectory":
         if bool(LEADER_WAIT_FOR_FOLLOWER_CONNECTIONS):
             _wait_for_follower_connections(LEADER_CONNECTION_WAIT_TIMEOUT_SEC, LEADER_CONNECTION_POLL_INTERVAL_SEC)
+        # Send wave settings as soon as Unity is confirmed running (cameras connected).
+        # This is much earlier than the leader retry loop (which waits for visual lock).
+        _send_wave_settings()
 
     runtime_settings["startup_sync_started_at"] = time.time()
     runtime_settings["startup_sync_ready_since"] = None
@@ -1489,6 +1529,7 @@ def main():
                 try:
                     _send_leader_startup_commands()
                     _send_follower_startup_commands()
+                    _send_wave_settings()
                     if total_attempts > 1:
                         print(f"[LeaderCmd] Startup command attempt {attempt}/{total_attempts}")
                 except Exception as e:
@@ -1524,21 +1565,12 @@ def main():
             if SHOW_WINDOW:
                 t0 = time.time()
                 current_loop_time = time.time()
-                try:
-                    with speed_lock:
-                        left_spd_knots = boat_speeds.get("Left", 0.0)
-                        right_spd_knots = boat_speeds.get("Right", 0.0)
-                    avg_speed_mps = ((left_spd_knots + right_spd_knots) / 2.0) / 1.94384
-                except Exception:
-                    avg_speed_mps = 0.0
-
                 for stream_name, frame in disp_frames.items():
-                    shaken_frame = apply_camera_shake(frame, avg_speed_mps, current_loop_time)
                     kalman_enabled = bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER))
                     cv2.putText(
-                        shaken_frame,
+                        frame,
                         f"Kalman: {'ON' if kalman_enabled else 'OFF'}  (press K)",
-                        (16, shaken_frame.shape[0] - 16),
+                        (16, frame.shape[0] - 16),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.55,
                         (0, 255, 0) if kalman_enabled else (0, 0, 255),
@@ -1546,15 +1578,15 @@ def main():
                     )
                     side_detect_enabled = bool(runtime_settings.get("enable_side_detection", True))
                     cv2.putText(
-                        shaken_frame,
+                        frame,
                         f"SideDetect: {'ON' if side_detect_enabled else 'OFF'}  (press S)",
-                        (16, shaken_frame.shape[0] - 36),
+                        (16, frame.shape[0] - 36),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.50,
                         (0, 255, 0) if side_detect_enabled else (0, 0, 255),
                         2,
                     )
-                    cv2.imshow(CAMERA_STREAMS[stream_name]["window"], shaken_frame)
+                    cv2.imshow(CAMERA_STREAMS[stream_name]["window"], frame)
                 t_imshow = time.time() - t0
 
                 # show a top-down formation view if desired

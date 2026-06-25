@@ -11,10 +11,12 @@ import numpy as np
 from .config import (
     KF_ADAPTIVE_MOTION_GAIN,
     KF_ADAPTIVE_RESIDUAL_GAIN,
+    KF_CONF_R_MAX,
     KF_INITIAL_VEL_BLEND,
     KF_MAX_PROCESS_SCALE,
     KF_MEAS_AREA_VAR,
     KF_MEAS_OFFSET_VAR,
+    KF_MIN_DET_CONF,
     KF_PROC_POS_VAR,
     KF_PROC_VEL_VAR,
 )
@@ -94,7 +96,7 @@ class KalmanFilter:
         self.x = F.dot(self.x)
         self.P = F.dot(self.P).dot(F.T) + Q
 
-    def update(self, meas_offset, meas_area):
+    def update(self, meas_offset, meas_area, det_conf=1.0):
         if self.x is None:
             self.initialize(meas_offset, meas_area)
             return
@@ -114,7 +116,10 @@ class KalmanFilter:
 
         residual = z - H.dot(self.x)
         measurement_scale = self._adaptive_measurement_scale(residual)
-        R = np.diag([self.meas_offset_var, self.meas_area_var]) * measurement_scale
+        # Low YOLO confidence → inflate R so the filter trusts the detection less.
+        # conf=1.0 → no change; conf=0.25 → up to KF_CONF_R_MAX × R.
+        conf_r_scale = min(1.0 / max(float(det_conf), float(KF_MIN_DET_CONF)), float(KF_CONF_R_MAX))
+        R = np.diag([self.meas_offset_var, self.meas_area_var]) * min(measurement_scale * conf_r_scale, float(KF_MAX_PROCESS_SCALE))
 
         S = H.dot(self.P).dot(H.T) + R
         K = self.P.dot(H.T).dot(np.linalg.inv(S))

@@ -82,7 +82,7 @@ WINDOW_SIZE = (640, 360)
 YOLO_CLASS_LEADER = 0
 YOLO_CLASS_FOLLOWER = 1
 YOLO_CLASSES = [YOLO_CLASS_LEADER, YOLO_CLASS_FOLLOWER]
-YOLO_CONFIDENCE = 0.12
+YOLO_CONFIDENCE = 0.25       # raised from 0.12 to reduce wave-glitter false positives; lower if real detections are missed
 YOLO_MIN_BOX_AREA = 300
 YOLO_DEVICE = "cuda:0"
 YOLO_USE_BATCHING = True
@@ -91,7 +91,7 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = False
+ENABLE_KALMAN_FILTER = True
 # If False, side-camera detections/predictions are ignored by the controller.
 # Set this in `config.py` to disable side-camera usage at startup.
 ENABLE_SIDE_DETECTION = False
@@ -118,6 +118,8 @@ KF_ADAPTIVE_MOTION_GAIN = 0.8  # restored partial adaptive boost for turns
 KF_ADAPTIVE_RESIDUAL_GAIN = 1.2
 KF_MAX_PROCESS_SCALE = 9.0     # wider range so filter can still adapt on sharp circular turns
 KF_INITIAL_VEL_BLEND = 0.08    # keep low: prevents noisy finite-diff velocity from polluting KF state
+KF_MIN_DET_CONF = 0.10         # confidence floor: prevents R from blowing up on near-threshold detections
+KF_CONF_R_MAX = 4.0            # max R inflation factor from low YOLO detection confidence (conf=0.25 → 4× R)
 
 # Logging and Metrics Configuration
 # ---------------------------------------------------------
@@ -142,8 +144,8 @@ LEADER_INITIAL_CONTROL_MODE = "Trajectory"
 LEADER_TRAJECTORY_MODE = "Circle"
 LEADER_TRAJECTORY_SPEED = 18.0 #18.0
 LEADER_TRAJECTORY_SPEED_RAMP_ENABLE = True
-LEADER_TRAJECTORY_ACCELERATION = 4.0
-LEADER_TRAJECTORY_INITIAL_SPEED = 4.0
+LEADER_TRAJECTORY_ACCELERATION = 6.0
+LEADER_TRAJECTORY_INITIAL_SPEED = 8.0
 LEADER_TRAJECTORY_CIRCLE_RADIUS = 360.0
 LEADER_TRAJECTORY_TRIANGLE_SIDE = 30.0
 LEADER_TRAJECTORY_RECT_SIZE = (36.0, 22.0)
@@ -203,6 +205,16 @@ TRACK_HOLD_SEC = 0.60
 TRACK_REACQUIRE_BIAS = 0.35
 TRACK_OFFSET_ALPHA = 0.35
 TRACK_AREA_ALPHA = 0.25
+# Wave false-positive gates (active only when a track is established).
+# Hard-reject YOLO candidates that are too far in position or too different in
+# area from the current track — wave glitter typically appears at unrelated
+# positions and sizes.  Class-agnostic fallback recovers the track when YOLO
+# mis-classifies the leader as a follower (class flip under waves).
+TRACK_GATE_ENABLE = True
+TRACK_GATE_MAX_OFFSET_DELTA = 0.45    # reject if candidate offset > this far from track  (normalized, 0–1 range)
+TRACK_GATE_MAX_AREA_RATIO   = 5.0     # reject if area changes by more than this × vs last known area
+TRACK_GATE_CLASS_AGNOSTIC_ENABLE = True   # when no correct-class det survives, fall back to any class in tight gate
+TRACK_GATE_CLASS_AGNOSTIC_OFFSET = 0.20  # tight offset gate for the class-agnostic fallback pass
 STALE_TARGET_THROTTLE_SCALE = 0.65
 STALE_TARGET_STEER_SCALE = 0.85
 SEARCH_FORWARD_THROTTLE = 0.24
@@ -215,7 +227,37 @@ FOLLOW_FAR_MAX_THROTTLE = 0.9
 # --- Leader-far tuning ---
 # When the (visual) area of the leader is below this value, consider the leader "far".
 # Units are image-area units (same units as YOLO / predicted areas).
+# NOTE: when the formation reference is calibrated, is_far is computed using
+# LEADER_FAR_AREA_SCALE * desired_front_area instead of this fixed threshold.
 LEADER_FAR_AREA_THRESHOLD = 60000
+# Scale factor applied to desired_front_area to derive a dynamic far-threshold.
+# At formation distance (area ≈ desired_front_area), is_far = True (1.0 < 2.0).
+# Only when the follower is significantly closer than target does is_far flip to False,
+# capping throttle_ceiling at FOLLOW_MAX_THROTTLE and disabling the FAR boost multiplier.
+LEADER_FAR_AREA_SCALE = 2.0
+
+# ---- Kalman-filter approach-rate damper (anti-overshoot) ----
+# When ENABLE_KALMAN_FILTER is True and the KF reports a positive area velocity
+# (area growing = follower closing on leader), a D-term is subtracted from
+# throttle proportional to the normalised approach rate, and the EMA alpha is
+# boosted to make the throttle fall more quickly.  Both effects are ZERO when
+# KF is OFF, so they show up cleanly in KF ON vs OFF comparisons.
+#
+# D-term: throttle -= clamp(approach_ratio * D_GAIN, 0, D_MAX)
+#   where approach_ratio = track_area_velocity / target_opt
+KF_APPROACH_THROTTLE_D_GAIN = 1.50   # throttle reduction per unit approach ratio
+KF_APPROACH_THROTTLE_D_MAX  = 0.35   # maximum D-term reduction
+# Alpha boost: throttle_alpha = min(ALPHA_MAX, base_alpha + approach_ratio * ALPHA_GAIN)
+KF_APPROACH_ALPHA_GAIN            = 4.0   # alpha increase per unit approach ratio
+KF_APPROACH_THROTTLE_ALPHA_MAX    = 0.70  # cap on EMA alpha when approaching
+
+# Asymmetric EMA for throttle: allow throttle to fall faster than it rises.
+# When the computed throttle setpoint decreases (follower entering deadzone,
+# emergency stop, or D-term active), scale the EMA alpha up so the smoothed
+# command tracks the setpoint promptly instead of lagging for 5–10 frames.
+# This prevents EMA inertia from extending the overshoot window.
+THROTTLE_DECREASE_ALPHA_SCALE   = 2.0   # multiply alpha when setpoint is falling
+THROTTLE_FAST_DECREASE_ALPHA_MAX = 0.60  # hard cap on the boosted fall alpha
 # When leader is far, reduce side/formation priority by this scale (0..1).
 SIDE_PRIORITY_SCALE_WHEN_FAR = 0.35
 # When leader is far, multiply the visual far boost by this factor.
@@ -225,7 +267,7 @@ PAIR_CATCHUP_MULTIPLIER_WHEN_FAR = 1.5
 PREDICTION_HORIZON_SEC = 0.03   # short lookahead: provides turn prediction without amplifying velocity noise
 # How much of the Kalman/predicted offset is blended into the steer error.
 # Raised to 0.70 so the smoothed Kalman estimate dominates raw YOLO noise.
-PREDICTION_OFFSET_BLEND = 0.70
+PREDICTION_OFFSET_BLEND = 0.50  # reduced from 0.70: less reliance on KF velocity prediction to prevent steer drift on long circular runs
 # How much of the Kalman/predicted area is blended into throttle control.
 PREDICTION_AREA_BLEND = 0.50
 PREDICTION_VELOCITY_ALPHA = 0.20
@@ -326,7 +368,7 @@ STALE_TRACK_STEER_GAIN = 0.80
 STALE_TRACK_THROTTLE_GAIN = 0.80
 VISION_FRONT_TARGET_OFFSET = 0.0
 VISION_SIDE_TARGET_OFFSET = 0.0
-VISION_AREA_ERROR_DEADZONE_RATIO = 0.12
+VISION_AREA_ERROR_DEADZONE_RATIO = 0.12 #0.14
 VISION_FRONT_AREA_TOLERANCE_RATIO = 0.14
 VISION_SIDE_AREA_TOLERANCE_RATIO = 0.16
 VISION_FRONT_AREA_GAIN = 0.72
@@ -376,16 +418,20 @@ STARTUP_STEER_LOCK_ENABLE = True
 STARTUP_STEER_LOCK_SEC = 2.0
 
 KV_STEER = 1.02
+RIGHT_KV_STEER = 0.78  # reduced from 1.02: less aggressive steer gain for Right to damp S-twist
 STEER_DEADZONE_H = 0.020    # reduced from 0.06: P-term must be active for gentle-circle steer (~0.025 error)
 FINAL_STEER_DEADZONE_H = 0.012  # reduced from 0.045: must be < P-term steer so output passes the filter
 STEER_SLEW_RATE_PER_SEC = 2.0   # reduced from 4.0 to cap command rate and reduce jerkiness
-# Right follower uses the same rate; both benefit from the lower ceiling.
-RIGHT_STEER_SLEW_RATE_PER_SEC = 2.0
+RIGHT_STEER_SLEW_RATE_PER_SEC = 1.2  # reduced from 2.0: slower Right steer changes damp S-twist coupling
 SEARCH_MODE_STEER = 0.5
 KV_THROTTLE_P = 0.00014
 FOLLOW_BASE_THROTTLE = 0.40
 FOLLOW_MAX_THROTTLE = 0.68  # reduced from 0.75: prevents overshoot oscillation at target
-THROTTLE_SMOOTH_ALPHA = 0.40  # EMA toward new throttle each step; smooths sudden throttle jumps
+THROTTLE_SMOOTH_ALPHA = 0.40  # reduced from 0.40: slightly more EMA smoothing on throttle
+RIGHT_THROTTLE_SMOOTH_ALPHA = 0.40  # more smoothing for Right: damps throttle oscillation from S-twist
+# Leader-speed feedforward: at target distance, provides ~0.65 throttle to match leader's 18 m/s cruise,
+# preventing the deadzone → coast → fall behind → max-throttle chase bang-bang oscillation.
+LEADER_SPEED_THROTTLE_FF = 0.036
 
 # Area thresholds (How close/far the target is based on its image area, used for various heuristics and tuning)
 YOLO_AREA_OPT = 250000
@@ -408,9 +454,21 @@ PREDICTION_ARROW_PIXELS = 90
 PREDICTION_ARROW_MIN_PIXELS = 18
 SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": -1.0}
 
-# Camera shake
-ENABLE_CAMERA_SHAKE = True
-CAMERA_SHAKE_SPEED_GAIN = 2.0
-CAMERA_WAVE_FREQ = 0.6
-CAMERA_WAVE_AMP_BASE = 3.0
-CAMERA_WAVE_AMP_SPEED_GAIN = 15.0
+# =========================================================
+# SUIMONO wave environment control (sent to Unity at startup)
+# Requires WaveController.cs attached to a GameObject in the scene.
+# Set WAVE_CONTROL_ENABLE = True to override the Unity inspector
+# wave parameters via UDP whenever Python starts.
+# When using real SUIMONO waves, MEAS_NOISE_ENABLE and
+# DETECTION_DROPOUT_ENABLE can be set to False — the actual
+# camera shake from the Unity physics replaces the simulation.
+# =========================================================
+WAVE_CONTROL_ENABLE          = True
+WAVE_CONTROL_PORT            = 5070       # must match WaveController.listenPort
+SUIMONO_WAVE_HEIGHT          = 0.95       # SuimonoObject.waveHeight (normal-map ripple intensity; >0.65 causes glitter/sparkle false positives)
+SUIMONO_TURBULENCE           = 0.20       # SuimonoObject.turbulenceFactor (keep low to reduce surface glint)
+SUIMONO_LARGE_WAVE_HEIGHT    = 1.0        # SuimonoObject.lgWaveHeight (physical geometry; this is what causes boat occlusion)
+SUIMONO_LARGE_WAVE_SCALE     = 0.02       # SuimonoObject.lgWaveScale (smaller = more frequent large waves)
+SUIMONO_WAVE_SCALE           = 0.6        # SuimonoObject.waveScale (small-wave detail)
+SUIMONO_FLOW_SPEED           = 0.02       # SuimonoObject.flowSpeed
+SUIMONO_CAMERA_TILT_STRENGTH = 1.0        # CameraWaveTilt.tiltStrength
