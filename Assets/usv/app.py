@@ -70,6 +70,7 @@ from .config import (
     SUIMONO_WAVE_SCALE,
     SUIMONO_FLOW_SPEED,
     SUIMONO_CAMERA_TILT_STRENGTH,
+    WAVE_APPLY_AFTER_STARTUP,
 )
 from .control import process_boat_vision_based
 from .formation_geometry import build_ideal_formation_points
@@ -1471,9 +1472,11 @@ def main():
     if LEADER_AUTO_TRAJECTORY_ENABLE and str(LEADER_INITIAL_CONTROL_MODE).lower() == "trajectory":
         if bool(LEADER_WAIT_FOR_FOLLOWER_CONNECTIONS):
             _wait_for_follower_connections(LEADER_CONNECTION_WAIT_TIMEOUT_SEC, LEADER_CONNECTION_POLL_INTERVAL_SEC)
-        # Send wave settings as soon as Unity is confirmed running (cameras connected).
-        # This is much earlier than the leader retry loop (which waits for visual lock).
-        _send_wave_settings()
+        # Send wave settings now only when WAVE_APPLY_AFTER_STARTUP is False.
+        # When True, wave/rain are held back until startup sync releases (leader retry
+        # loop), so extreme wave heights cannot destabilize boats before visual lock.
+        if not bool(WAVE_APPLY_AFTER_STARTUP):
+            _send_wave_settings()
 
     runtime_settings["startup_sync_started_at"] = time.time()
     runtime_settings["startup_sync_ready_since"] = None

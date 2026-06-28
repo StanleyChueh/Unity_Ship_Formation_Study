@@ -4,10 +4,19 @@ using UnityEngine;
 public class ShipStabilizer : MonoBehaviour
 {
     [Header("重心上下 (Y軸：越低越抗側翻)")]
-    public float centerOfMassY = -1.5f; // 稍微收斂一點
-    
+    public float centerOfMassY = -1.5f;
+
     [Header("重心前後 (Z軸：正值往前，負值往後)")]
-    public float centerOfMassZ = 0.0f;  // 🌟 先改回 0，我們慢慢調！
+    public float centerOfMassZ = 0.0f;
+
+    [Header("主動扶正力 (Active uprighting torque)")]
+    [Tooltip("Torque applied each FixedUpdate to push the boat back upright. " +
+             "Raise this if the boat capsizes in heavy waves (Storm / Typhoon). " +
+             "15000 is tuned for near-Typhoon (lgWaveHeight=2.5); use 18000 for lgWaveHeight=3.0.")]
+    public float uprightTorque = 15000f;
+
+    [Tooltip("Maximum tilt angle (degrees) before uprighting torque is applied.")]
+    public float tiltDeadzone = 5f;
 
     private Rigidbody rb;
 
@@ -18,22 +27,32 @@ public class ShipStabilizer : MonoBehaviour
 
     void FixedUpdate()
     {
-        // 為了讓你可以在執行時動態拉動 Inspector 的滑桿測試，
-        // 我們把重心的設定放在 Update 裡即時更新
-        rb.centerOfMass = new Vector3(0, centerOfMassY, centerOfMassZ);
+        rb.centerOfMass = new Vector3(0f, centerOfMassY, centerOfMassZ);
+        ApplyUprightingTorque();
     }
 
-    // 🌟 透視魔法：在 Scene 視窗畫出重心的位置！
+    void ApplyUprightingTorque()
+    {
+        // Compute the angle between the boat's local up and world up
+        Vector3 localUp   = transform.up;
+        Vector3 worldUp   = Vector3.up;
+        float   tiltAngle = Vector3.Angle(localUp, worldUp);
+
+        if (tiltAngle <= tiltDeadzone) return;
+
+        // Rotation axis that would bring local-up back to world-up
+        Vector3 axis      = Vector3.Cross(localUp, worldUp).normalized;
+        float   strength  = Mathf.InverseLerp(tiltDeadzone, 90f, tiltAngle);
+        rb.AddTorque(axis * uprightTorque * strength, ForceMode.Force);
+    }
+
     void OnDrawGizmos()
     {
         if (Application.isPlaying)
         {
-            // 算出重心的世界座標
-            Vector3 worldCoM = transform.TransformPoint(new Vector3(0, centerOfMassY, centerOfMassZ));
-            
-            // 畫一顆紅色的球
+            Vector3 worldCoM = transform.TransformPoint(new Vector3(0f, centerOfMassY, centerOfMassZ));
             Gizmos.color = Color.red;
-            Gizmos.DrawSphere(worldCoM, 0.4f); 
+            Gizmos.DrawSphere(worldCoM, 0.4f);
         }
     }
 }

@@ -91,7 +91,7 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = True
+ENABLE_KALMAN_FILTER = False
 # If False, side-camera detections/predictions are ignored by the controller.
 # Set this in `config.py` to disable side-camera usage at startup.
 ENABLE_SIDE_DETECTION = False
@@ -462,13 +462,34 @@ SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": -1.0}
 # When using real SUIMONO waves, MEAS_NOISE_ENABLE and
 # DETECTION_DROPOUT_ENABLE can be set to False — the actual
 # camera shake from the Unity physics replaces the simulation.
+#
+# Beaufort-anchored preset reference:
+#   Preset      | waveH | turb  | lgH  | lgSc  | wSc  | flow  | tilt
+#   ------------+-------+-------+------+-------+------+-------+-----
+#   Calm  B0–2  | 0.10  | 0.02  | 0.05 | 0.100 | 0.20 | 0.003 | 0.05
+#   Mod   B4–5  | 0.50  | 0.12  | 0.55 | 0.040 | 0.45 | 0.010 | 0.50
+#   Rough B6–7  | 0.95  | 0.20  | 1.00 | 0.020 | 0.60 | 0.020 | 1.00
+#   Storm B9–10 | 1.40  | 0.50  | 2.00 | 0.012 | 0.70 | 0.150 | 1.50
+#   Typhoon B12 | 1.80  | 0.80  | 3.50 | 0.008 | 0.80 | 0.350 | 1.80
 # =========================================================
-WAVE_CONTROL_ENABLE          = True
+WAVE_CONTROL_ENABLE          = False
+# If True, wave/rain settings are held back until after startup sync releases
+# (i.e. after all cameras connect and visual lock is established).
+# Set False only if you need waves applied before the formation locks (e.g. pre-wave
+# stress tests), but this WILL destabilize boats during startup at Storm/Typhoon level.
+WAVE_APPLY_AFTER_STARTUP     = True
 WAVE_CONTROL_PORT            = 5070       # must match WaveController.listenPort
-SUIMONO_WAVE_HEIGHT          = 0.95       # SuimonoObject.waveHeight (normal-map ripple intensity; >0.65 causes glitter/sparkle false positives)
-SUIMONO_TURBULENCE           = 0.20       # SuimonoObject.turbulenceFactor (keep low to reduce surface glint)
-SUIMONO_LARGE_WAVE_HEIGHT    = 1.0        # SuimonoObject.lgWaveHeight (physical geometry; this is what causes boat occlusion)
-SUIMONO_LARGE_WAVE_SCALE     = 0.02       # SuimonoObject.lgWaveScale (smaller = more frequent large waves)
-SUIMONO_WAVE_SCALE           = 0.6        # SuimonoObject.waveScale (small-wave detail)
-SUIMONO_FLOW_SPEED           = 0.02       # SuimonoObject.flowSpeed
-SUIMONO_CAMERA_TILT_STRENGTH = 1.0        # CameraWaveTilt.tiltStrength
+SUIMONO_WAVE_HEIGHT          = 1.80       # visual normal-map ripple (no physics); >0.65 causes YOLO glitter
+SUIMONO_TURBULENCE           = 0.80       # surface turbulence / glint intensity
+# lgWaveHeight is the PHYSICAL wave geometry — it moves boats via buoyancy.
+# SUIMONO's own Beaufort-12 ceiling is 3.0; values above that are beyond the
+# design range and will capsize the boats.  ShipStabilizer uprightTorque must be
+# raised to ≥15000 to survive these conditions:
+#   1.0 = Rough (B6–7)   boats handle it fine
+#   2.0 = Storm (B9–10)  boats rock heavily but survive
+#   2.5 = near-Typhoon   requires uprightTorque ≥ 15000; push to 3.0 only with ≥ 18000
+SUIMONO_LARGE_WAVE_HEIGHT    = 2.50       # physical wave height — near-Typhoon; capsizes above ~3.0
+SUIMONO_LARGE_WAVE_SCALE     = 0.008      # spatial frequency of large waves (longer swells at typhoon scale)
+SUIMONO_WAVE_SCALE           = 0.80       # small-wave detail density
+SUIMONO_FLOW_SPEED           = 0.350      # surface current speed
+SUIMONO_CAMERA_TILT_STRENGTH = 1.80       # camera pitch/roll from wave surface normal
