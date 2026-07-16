@@ -91,7 +91,7 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = False
+ENABLE_KALMAN_FILTER = True
 # If False, side-camera detections/predictions are ignored by the controller.
 # Set this in `config.py` to disable side-camera usage at startup.
 ENABLE_SIDE_DETECTION = False
@@ -472,7 +472,7 @@ SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": -1.0}
 #   Storm B9–10 | 1.40  | 0.50  | 2.00 | 0.012 | 0.70 | 0.150 | 1.50
 #   Typhoon B12 | 1.80  | 0.80  | 3.50 | 0.008 | 0.80 | 0.350 | 1.80
 # =========================================================
-WAVE_CONTROL_ENABLE          = False
+WAVE_CONTROL_ENABLE          = True
 # If True, wave/rain settings are held back until after startup sync releases
 # (i.e. after all cameras connect and visual lock is established).
 # Set False only if you need waves applied before the formation locks (e.g. pre-wave
