@@ -51,5 +51,5 @@
         "temp/": true,
         "Temp/": true
     },
-    "dotnet.defaultSolution": "Unity_Ship_Formation_Study.sln"
+    "dotnet.defaultSolution": "Leader_Follower.sln"
 }
