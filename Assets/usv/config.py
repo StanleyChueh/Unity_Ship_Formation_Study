@@ -493,3 +493,103 @@ SUIMONO_LARGE_WAVE_SCALE     = 0.008      # spatial frequency of large waves (lo
 SUIMONO_WAVE_SCALE           = 0.80       # small-wave detail density
 SUIMONO_FLOW_SPEED           = 0.350      # surface current speed
 SUIMONO_CAMERA_TILT_STRENGTH = 1.80       # camera pitch/roll from wave surface normal
+
+# =========================================================
+# Leader stern-wake control (sent to Unity's WaveController on the same port)
+# Drives the fx_boatwake ParticleSystem parented under the Leader boat.
+# This is a *visual occlusion* stress test: a denser, larger, more opaque wake
+# hides the leader hull from the follower's front camera, so YOLO detection
+# drops out and the tracker must ride on the Kalman prediction.
+# It does NOT change boat physics — only what the camera sees.
+#
+# Scene-authored baseline (matches the Unity inspector today):
+#   rate 40/s, +10/m, life 5.0s, size 0.10-0.50, growth 12.69,
+#   alpha 0.133, lift 0.0, width 4.0, max 1000
+#
+# ---------------------------------------------------------
+# WAKE_INTENSITY is the ONLY knob you normally touch.  It is a single 0.0-1.0
+# scalar that interpolates every underlying particle parameter between the
+# scene-authored baseline (0.0) and the maximum usable wake (1.0), so the
+# stress test is a clean 1-D sweep instead of a 10-parameter search.
+#
+#   0.00  scene baseline — wake is visible but barely occludes anything
+#   0.25  light          — occasional brief dropouts
+#   0.50  moderate       — regular dropouts, Kalman clearly doing work
+#   0.75  hard           — long dropouts through turns
+#   1.00  maximum        — near-continuous occlusion; detection may hit 0%
+#
+# Finding your operating point: sweep upward and watch the `[Metrics] leader=`
+# percentage.  The band worth reporting is roughly 40-70% leader detection —
+# that is where the filter is genuinely carrying the track.  At 0% you are not
+# testing the controller at all, only testing a covered lens.
+#
+# Tuning notes (why the anchors are shaped the way they are):
+#   - Density comes from rate_over_distance, not rate_over_time.  Rate-over-time
+#     emits whether or not the boat moves, so a high value piles particles onto
+#     the spawn point while the leader is still stationary at startup and whites
+#     out the camera before it can ever lock.  Rate-over-distance only emits as
+#     the hull travels — that is a real wake.
+#   - Final puff diameter is start_size_max × size_growth (baseline ≈ 6.3 units).
+#     The follower camera sits ~25 units astern, so past ~12 units the foam
+#     engulfs the lens itself instead of occluding the leader.  Growth therefore
+#     stays near baseline across the whole range; alpha and rate do the work.
+#   - alpha is the strongest safe occlusion lever.
+#   - lifetime controls how far the wake trails astern, i.e. how long the
+#     follower stays blinded after the leader turns.
+#   - lift raises spray off the surface into the line of sight; kept near zero
+#     because it lofts foam toward the camera very quickly.
+#   - max_particles must scale with rate × lifetime or the emitter silently clips.
+# ---------------------------------------------------------
+WAKE_CONTROL_ENABLE = True
+WAKE_ENABLE         = True     # False stops wake emission entirely (clean-water control run)
+WAKE_TARGET         = "all"  # "leader" = only the tracked boat's wake; "all" = every boat
+WAKE_INTENSITY      = 0.35      # 0.0 = baseline … 1.0 = maximum
+
+# Anchor points that WAKE_INTENSITY interpolates between.
+_WAKE_ANCHOR_LOW = {           # intensity 0.0 — matches the Unity inspector
+    "rate_over_time": 40.0,
+    "rate_over_distance": 10.0,
+    "lifetime": 5.0,
+    "start_size_min": 0.10,
+    "start_size_max": 0.50,
+    "size_growth": 12.69,
+    "alpha": 0.133,
+    "lift": 0.0,
+    "width": 4.0,
+    "max_particles": 1000,
+}
+_WAKE_ANCHOR_HIGH = {          # intensity 1.0 — maximum usable before whiteout
+    "rate_over_time": 120.0,
+    "rate_over_distance": 220.0,
+    "lifetime": 8.0,
+    "start_size_min": 0.18,
+    "start_size_max": 0.70,
+    "size_growth": 15.0,
+    "alpha": 0.55,
+    "lift": 0.0,
+    "width": 7.0,
+    "max_particles": 6000,
+}
+
+# Per-field escape hatch: anything named here overrides the interpolated value.
+# e.g. {"alpha": 0.8} to push opacity past the anchor while keeping the rest.
+#
+# "lift" is deliberately 0.0 at both anchors so the normal intensity sweep never
+# touches Unity's velocity-over-lifetime module.  Opt in explicitly if you want
+# spray lofted off the surface into the line of sight:
+#     WAKE_OVERRIDES = {"lift": 0.30}
+# Values at or below 0.01 are ignored by WaveController (deadband).
+WAKE_OVERRIDES = {}
+
+
+def wake_params(intensity=None):
+    """Resolve the full wake parameter set for a given 0..1 intensity."""
+    t = WAKE_INTENSITY if intensity is None else float(intensity)
+    t = max(0.0, min(1.0, t))
+    params = {}
+    for key, low in _WAKE_ANCHOR_LOW.items():
+        high = _WAKE_ANCHOR_HIGH[key]
+        value = low + (high - low) * t
+        params[key] = int(round(value)) if key == "max_particles" else value
+    params.update(WAKE_OVERRIDES)
+    return params

@@ -71,6 +71,11 @@ from .config import (
     SUIMONO_FLOW_SPEED,
     SUIMONO_CAMERA_TILT_STRENGTH,
     WAVE_APPLY_AFTER_STARTUP,
+    WAKE_CONTROL_ENABLE,
+    WAKE_ENABLE,
+    WAKE_TARGET,
+    WAKE_INTENSITY,
+    wake_params,
 )
 from .control import process_boat_vision_based
 from .formation_geometry import build_ideal_formation_points
@@ -1278,6 +1283,33 @@ def _send_wave_settings():
         send_sock.close()
 
 
+def _send_wake_settings():
+    """Send leader stern-wake particle settings to Unity's WaveController via UDP."""
+    if not WAKE_CONTROL_ENABLE:
+        return
+    params = wake_params()
+    cmd = {
+        "cmd": "set_wake",
+        "enable": 1 if WAKE_ENABLE else 0,
+        "target": str(WAKE_TARGET),
+        **params,
+    }
+    send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        send_sock.sendto(json.dumps(cmd).encode("utf-8"), (UDP_IP, int(WAVE_CONTROL_PORT)))
+        print(
+            f"[WakeCtrl] Sent wake settings → port {WAVE_CONTROL_PORT}: "
+            f"target={WAKE_TARGET} enable={WAKE_ENABLE} intensity={WAKE_INTENSITY:.2f} "
+            f"rate={params['rate_over_time']:.0f}/s +{params['rate_over_distance']:.0f}/m "
+            f"life={params['lifetime']:.1f}s alpha={params['alpha']:.3f} "
+            f"max={params['max_particles']}"
+        )
+    except Exception as e:
+        print(f"[WakeCtrl] Failed to send wake settings: {e}")
+    finally:
+        send_sock.close()
+
+
 def _wait_for_follower_connections(timeout_sec, poll_interval_sec):
     timeout_sec = max(0.0, float(timeout_sec))
     poll_interval_sec = max(0.05, float(poll_interval_sec))
@@ -1477,6 +1509,7 @@ def main():
         # loop), so extreme wave heights cannot destabilize boats before visual lock.
         if not bool(WAVE_APPLY_AFTER_STARTUP):
             _send_wave_settings()
+            _send_wake_settings()
 
     runtime_settings["startup_sync_started_at"] = time.time()
     runtime_settings["startup_sync_ready_since"] = None
@@ -1533,6 +1566,7 @@ def main():
                     _send_leader_startup_commands()
                     _send_follower_startup_commands()
                     _send_wave_settings()
+                    _send_wake_settings()
                     if total_attempts > 1:
                         print(f"[LeaderCmd] Startup command attempt {attempt}/{total_attempts}")
                 except Exception as e:
