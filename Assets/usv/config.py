@@ -488,7 +488,7 @@ SUIMONO_TURBULENCE           = 0.80       # surface turbulence / glint intensity
 #   1.0 = Rough (B6–7)   boats handle it fine
 #   2.0 = Storm (B9–10)  boats rock heavily but survive
 #   2.5 = near-Typhoon   requires uprightTorque ≥ 15000; push to 3.0 only with ≥ 18000
-SUIMONO_LARGE_WAVE_HEIGHT    = 2.50       # physical wave height — near-Typhoon; capsizes above ~3.0
+SUIMONO_LARGE_WAVE_HEIGHT    = 3.25       # physical wave height — near-Typhoon; capsizes above ~3.0
 SUIMONO_LARGE_WAVE_SCALE     = 0.008      # spatial frequency of large waves (longer swells at typhoon scale)
 SUIMONO_WAVE_SCALE           = 0.80       # small-wave detail density
 SUIMONO_FLOW_SPEED           = 0.350      # surface current speed
@@ -543,7 +543,15 @@ SUIMONO_CAMERA_TILT_STRENGTH = 1.80       # camera pitch/roll from wave surface 
 WAKE_CONTROL_ENABLE = True
 WAKE_ENABLE         = True     # False stops wake emission entirely (clean-water control run)
 WAKE_TARGET         = "all"  # "leader" = only the tracked boat's wake; "all" = every boat
-WAKE_INTENSITY      = 0.35      # 0.0 = baseline … 1.0 = maximum
+WAKE_INTENSITY      = 1.0      # 0.0 = baseline … 1.0 = maximum
+# NOTE: run_summaries.csv shows leader_det_rate_pct ~99-100% at intensity=0.7 —
+# the anchor-interpolated wake was not actually occluding the leader in
+# practice. Pushed to 1.0 and added WAKE_OVERRIDES below (alpha + lift) to go
+# past the documented anchor max. Re-run and check the printed
+# `[Metrics] leader=` percentage / leader_det_rate_pct; if it's still high,
+# raise "alpha" further (toward 1.0) and/or "lift"; if detection now sits at a
+# hard 0%, back "alpha" or "lift" down until brief re-acquisitions appear —
+# that's the regime where Kalman-vs-no-Kalman comparisons are meaningful.
 
 # Anchor points that WAKE_INTENSITY interpolates between.
 _WAKE_ANCHOR_LOW = {           # intensity 0.0 — matches the Unity inspector
@@ -579,7 +587,14 @@ _WAKE_ANCHOR_HIGH = {          # intensity 1.0 — maximum usable before whiteou
 # spray lofted off the surface into the line of sight:
 #     WAKE_OVERRIDES = {"lift": 0.30}
 # Values at or below 0.01 are ignored by WaveController (deadband).
-WAKE_OVERRIDES = {}
+# alpha: pushed past the 0.55 anchor ceiling toward near-opaque foam — at 0.7
+#   intensity (alpha≈0.42) the leader was still detected ~99-100% of the time.
+# lift: enabled (anchors keep it at 0.0) to loft spray up into the follower
+#   camera's direct line of sight to the leader hull, not just around its
+#   waterline. Start here; if the leader still doesn't drop out, try 0.5-0.6,
+#   but watch for the whole frame whiting out rather than just the leader —
+#   that stops being a useful KF-vs-no-KF test (nothing left to re-acquire).
+WAKE_OVERRIDES = {"alpha": 0.92, "lift": 0.35}
 
 
 def wake_params(intensity=None):
