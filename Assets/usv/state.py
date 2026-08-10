@@ -80,6 +80,10 @@ formation_targets = {
         "desired_side_offset": 0.0,
         "desired_side_area": 0.0,
         "desired_side_target_kind": None,
+        "peer_visual_initialized": False,
+        "desired_peer_offset": 0.0,
+        "desired_peer_area": 0.0,
+        "desired_peer_target_kind": None,
     },
     "Right": {
         "front_visual_initialized": False,
@@ -90,6 +94,10 @@ formation_targets = {
         "desired_side_offset": 0.0,
         "desired_side_area": 0.0,
         "desired_side_target_kind": None,
+        "peer_visual_initialized": False,
+        "desired_peer_offset": 0.0,
+        "desired_peer_area": 0.0,
+        "desired_peer_target_kind": None,
     },
 }
 

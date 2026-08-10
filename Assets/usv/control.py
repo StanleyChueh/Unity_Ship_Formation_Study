@@ -12,7 +12,7 @@ from datetime import datetime
 
 from .config import *
 from .helpers import blend_value, clamp, filter_steer_command, get_peer_boat_side
-from .state import boat_comm_states, formation_targets, runtime_settings, vision_lock, vision_states
+from .state import boat_comm_states, controller_states, formation_targets, runtime_settings, vision_lock, vision_states
 
 
 # Per-side startup lock expiry timestamps (epoch seconds).
@@ -22,6 +22,13 @@ _LAST_THROTTLE = {"Left": 0.0, "Right": 0.0}
 
 # Persistence counter to avoid single-frame area spikes zeroing throttle
 _AREA_OVER_MAX_COUNT = {"Left": 0, "Right": 0}
+
+# Blind-loss cruise bookkeeping: when the front camera has been fully lost
+# (no coasting KF track left either), remember when this loss episode began
+# and the steer command in effect at that moment, so the fallback can decay
+# it toward straight-ahead instead of extrapolating a stale turn forever.
+_BLIND_LOSS_ENTERED_AT = {"Left": 0.0, "Right": 0.0}
+_BLIND_LOSS_STEER_ANCHOR = {"Left": 0.0, "Right": 0.0}
 
 # Debug logging (Right follower)
 _DEBUG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "experiment_metrics"))
@@ -226,6 +233,45 @@ def compute_visual_far_boost(area, predicted_area, area_velocity, target_opt, me
     return clamp(boost, 0.0, FOLLOW_FAR_MAX_THROTTLE - FOLLOW_BASE_THROTTLE)
 
 
+def compute_peer_rescue_bias(
+    side,
+    peer_visual_ready,
+    desired_peer_offset,
+    desired_peer_area,
+    side_follower_detected,
+    side_follower_offset,
+    side_follower_area,
+):
+    """Steer/throttle nudge toward the peer follower boat, used only while
+    this boat's own leader track is lost. Requires a live sighting of the
+    peer this frame (not held/coasted) plus a prior calibration of what
+    correct spacing to it looks like.
+    """
+    if not (PEER_RESCUE_ENABLE and peer_visual_ready and side_follower_detected):
+        return 0.0, 0.0
+
+    offset_error = float(side_follower_offset) - float(desired_peer_offset)
+    steer_bias = 0.0
+    if abs(offset_error) > float(PEER_RESCUE_STEER_DEADZONE_H):
+        steer_bias = clamp(
+            offset_error * float(PEER_RESCUE_STEER_KP) * SIDE_TRACK_STEER_SIGN_BY_BOAT[side],
+            -float(PEER_RESCUE_MAX_STEER_BIAS),
+            float(PEER_RESCUE_MAX_STEER_BIAS),
+        )
+
+    throttle_bias = 0.0
+    if desired_peer_area > 1.0:
+        area_error_ratio = normalize_area_error(desired_peer_area, side_follower_area)
+        throttle_bias = clamp(
+            shape_area_error(area_error_ratio) * float(PEER_RESCUE_AREA_GAIN),
+            -float(PEER_RESCUE_MAX_THROTTLE_BIAS),
+            float(PEER_RESCUE_MAX_THROTTLE_BIAS),
+        )
+
+    blend = float(PEER_RESCUE_BLEND)
+    return steer_bias * blend, throttle_bias * blend
+
+
 def compute_distance_from_area(front_area, desired_front_area, yolo_area_opt):
     """Estimate distance proxy from visual area (normalized).
     Lower area ≈ farther away; higher area ≈ closer.
@@ -316,6 +362,8 @@ def process_boat_vision_based(sock, tx_port, side):
     side_leader_detected = bool(side_state.get("side_leader_detected", False))
     side_leader_offset = float(side_state.get("side_leader_center_offset", 0.0))
     side_follower_detected = bool(side_state.get("side_follower_detected", False))
+    side_follower_area = float(side_state.get("side_follower_area", 0.0))
+    side_follower_offset = float(side_state.get("side_follower_center_offset", 0.0))
     side_predicted_offset = side_state.get("predicted_offset", side_offset)
     side_predicted_area = side_state.get("predicted_area", side_area)
     side_prediction_confidence = side_state.get("prediction_confidence", 0.0)
@@ -347,6 +395,9 @@ def process_boat_vision_based(sock, tx_port, side):
     desired_side_offset = formation.get("desired_side_offset", 0.0)
     desired_side_area = formation.get("desired_side_area", 0.0)
     desired_side_target_kind = formation.get("desired_side_target_kind")
+    peer_visual_ref_ready = formation.get("peer_visual_initialized", False)
+    desired_peer_offset = formation.get("desired_peer_offset", 0.0)
+    desired_peer_area = formation.get("desired_peer_area", 0.0)
 
     # If side-camera detection is globally disabled at runtime, ignore side detections
     # so the controller will rely only on the front camera for formation keeping.
@@ -481,6 +532,7 @@ def process_boat_vision_based(sock, tx_port, side):
     _kf_approach_ratio = 0.0
 
     if front_detected:
+        _BLIND_LOSS_ENTERED_AT[side] = 0.0
         if front_method in ("YOLO", "FUSED"):
             if front_visual_ref_ready and desired_front_area > YOLO_AREA_MIN:
                 target_opt = desired_front_area
@@ -711,6 +763,7 @@ def process_boat_vision_based(sock, tx_port, side):
         side_chase_available = SIDE_STEER_ENABLED and side_pred_ok and side_target_kind in ("leader", "follower")
 
         if side_chase_available:
+            _BLIND_LOSS_ENTERED_AT[side] = 0.0
             steer = clamp(side_steer_bias / max(FRONT_PRIORITY_NO_FRONT_STEER_SCALE, 1e-5), -SEARCH_MODE_STEER, SEARCH_MODE_STEER)
 
             if steer != 0.0:
@@ -752,6 +805,31 @@ def process_boat_vision_based(sock, tx_port, side):
 
             if edge_throttle_floor is not None:
                 throttle = max(throttle, edge_throttle_floor)
+        elif DISABLE_SEARCH_MODE and BLIND_LOSS_CRUISE_ENABLE:
+            # Front camera fully lost (past TRACK_HOLD_SEC / KF coast, no
+            # peer-rescue sighting either). Rather than stop dead in the
+            # water -- which only widens the gap for every second the loss
+            # continues -- hold pace with the leader's broadcast cruise
+            # speed and decay the last steer command toward straight-ahead.
+            # See BLIND_LOSS_CRUISE_* in config.py for the rationale.
+            if _BLIND_LOSS_ENTERED_AT.get(side, 0.0) <= 0.0:
+                _BLIND_LOSS_ENTERED_AT[side] = current_time
+                _BLIND_LOSS_STEER_ANCHOR[side] = controller_states[side].get("last_steer", 0.0)
+
+            loss_elapsed = current_time - _BLIND_LOSS_ENTERED_AT[side]
+            steer_decay = clamp(
+                1.0 - (loss_elapsed / max(1e-3, float(BLIND_LOSS_STEER_HOLD_DECAY_SEC))),
+                0.0,
+                1.0,
+            )
+            steer = _BLIND_LOSS_STEER_ANCHOR[side] * steer_decay
+
+            leader_speed_now = float(state.get("leader_speed", 0.0))
+            throttle = clamp(
+                leader_speed_now * float(LEADER_SPEED_THROTTLE_FF),
+                float(BLIND_LOSS_CRUISE_MIN_THROTTLE),
+                float(BLIND_LOSS_CRUISE_MAX_THROTTLE),
+            )
         elif DISABLE_SEARCH_MODE:
             throttle = 0.0
             steer = 0.0
@@ -761,6 +839,27 @@ def process_boat_vision_based(sock, tx_port, side):
                 steer = clamp(last_known_offset * KV_STEER * SEARCH_STEER_GAIN, -SEARCH_MODE_STEER, SEARCH_MODE_STEER)
             else:
                 steer = lost_search_dir * SEARCH_MODE_STEER
+
+    # Peer-follower rescue: only while the leader track is actually lost
+    # (coasting or fully gone) -- never perturbs normal live-tracking control.
+    # A live sighting of the peer this frame is real corroborating evidence,
+    # so this is allowed to move the boat even under DISABLE_SEARCH_MODE,
+    # which only suppresses blind open-loop search sweeps.
+    peer_steer_bias = 0.0
+    peer_throttle_bias = 0.0
+    if not front_detected or front_stale:
+        peer_steer_bias, peer_throttle_bias = compute_peer_rescue_bias(
+            side,
+            peer_visual_ref_ready,
+            desired_peer_offset,
+            desired_peer_area,
+            side_follower_detected,
+            side_follower_offset,
+            side_follower_area,
+        )
+        if peer_steer_bias != 0.0 or peer_throttle_bias != 0.0:
+            steer = clamp(steer + peer_steer_bias, -1.0, 1.0)
+            throttle = clamp(throttle + peer_throttle_bias, 0.0, FOLLOW_MAX_THROTTLE)
 
     startup_sync_released = bool(runtime_settings.get("startup_sync_released", True))
     startup_sync_status = str(runtime_settings.get("startup_sync_status", "released"))
@@ -904,6 +1003,8 @@ def process_boat_vision_based(sock, tx_port, side):
         "pred_conf": front_prediction_confidence if front_detected else 0.0,
         "side_steer_bias": side_steer_bias,
         "side_throttle_bias": side_throttle_bias,
+        "peer_rescue_steer_bias": peer_steer_bias,
+        "peer_rescue_throttle_bias": peer_throttle_bias,
         "speed_knots": speed_mps * 1.94384,
         "leader_speed_knots": leader_speed_mps * 1.94384,
         "distance": distance,

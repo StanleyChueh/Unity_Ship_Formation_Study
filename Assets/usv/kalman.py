@@ -77,7 +77,7 @@ class KalmanFilter:
 
         return min(float(KF_MAX_PROCESS_SCALE), max(1.0, scale))
 
-    def predict(self, dt):
+    def predict(self, dt, vel_damping=1.0):
         if self.x is None:
             return
         F = np.array(
@@ -95,6 +95,20 @@ class KalmanFilter:
 
         self.x = F.dot(self.x)
         self.P = F.dot(self.P).dot(F.T) + Q
+
+        # Only used while coasting with no measurement (vel_damping < 1.0):
+        # mean-revert the velocity states after propagating position, so a long
+        # run of predict-only steps decays toward "last known heading" instead
+        # of extrapolating a straight line indefinitely.
+        if vel_damping != 1.0:
+            self.x[1] *= vel_damping
+            self.x[3] *= vel_damping
+
+    def offset_uncertainty(self):
+        """Std-dev of the offset estimate implied by the covariance (None if uninitialized)."""
+        if self.P is None:
+            return None
+        return float(np.sqrt(max(float(self.P[0, 0]), 0.0)))
 
     def update(self, meas_offset, meas_area, det_conf=1.0):
         if self.x is None:

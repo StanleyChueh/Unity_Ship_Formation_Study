@@ -202,6 +202,39 @@ WAKE_DILATE_KERNEL = (5, 3)
 
 # Tracking / prediction
 TRACK_HOLD_SEC = 0.60
+
+# When the Kalman filter is enabled and already has a live track, keep
+# dead-reckoning (kf.predict() with no correction) on the lost leader for up
+# to this long instead of freezing at the last detection like the plain
+# TRACK_HOLD_SEC hold does. This is the window that lets KF actually earn its
+# keep during a brief wave occlusion / far-range dropout.
+# Raised from 1.5s: at the current extreme wake stress-test settings
+# (WAKE_INTENSITY=1.0, alpha=0.92, lift=0.35 -- see WAKE_OVERRIDES below)
+# occlusions routinely run several seconds long, so a 1.5s coast window was
+# expiring mid-occlusion and dropping straight to fully-lost (which, before
+# the BLIND_LOSS_CRUISE fallback below, meant a hard stop). 3.0s bridges
+# more of the real dropout distribution while KF_CONF_STD_ZERO below still
+# tapers trust to ~0 well before it, so a bad coast can't dominate control.
+KF_COAST_MAX_SEC = 3.0
+# Past TRACK_HOLD_SEC, keep coasting only while the KF's own confidence
+# stays above this floor; once it decays below, treat the track as lost even
+# if still inside KF_COAST_MAX_SEC.
+KF_COAST_MIN_CONF = 0.05
+# While coasting (no measurement), confidence is derived directly from the
+# KF's own covariance growth (offset std-dev) instead of a fixed decay
+# constant: conf = 1 - std/KF_CONF_STD_ZERO. Calibrated from simulation so
+# confidence tapers to ~0 near KF_COAST_MAX_SEC of continuous coasting
+# (std grows roughly 0.14 -> 0.9 -> 1.5 at 0s/1.0s/1.5s of coast). Raised
+# in step with KF_COAST_MAX_SEC above so confidence still meaningfully
+# decays across the new, longer coast window instead of hitting 0 by ~1.1s
+# regardless of the nominal max (which is what happened at the old 1.2).
+KF_CONF_STD_ZERO = 2.2
+# Per-second decay applied to the KF's velocity states only while coasting,
+# so a long run of predict-only steps mean-reverts toward "no relative
+# motion" instead of extrapolating the last velocity in a straight line
+# forever (matters most for area/closing-rate, which is noisier than offset).
+KF_COAST_VEL_DAMPING_PER_SEC = 0.85
+
 TRACK_REACQUIRE_BIAS = 0.35
 TRACK_OFFSET_ALPHA = 0.35
 TRACK_AREA_ALPHA = 0.25
@@ -352,6 +385,25 @@ SIDE_TRACK_MAX_THROTTLE_BIAS = 0.0   # disabled: side-cam area fluctuates widely
 SIDE_TRACK_AREA_GAIN = 0.18
 SIDE_STEER_DEADZONE_H = 0.05
 SIDE_STALE_BIAS_SCALE = 0.72
+
+# Peer-follower rescue: while THIS boat's front camera has lost the leader
+# (coasting on the KF or fully lost/search mode), if the side camera can
+# currently see the OTHER follower boat, nudge steer/throttle to hold the
+# calibrated spacing to that peer instead of relying on KF dead-reckoning
+# alone. This is a dedicated, narrowly-scoped fallback: it is independent of
+# ENABLE_SIDE_DETECTION / SIDE_STEER_ENABLED (which gate the always-on side
+# assist used while the leader IS visible), so it only ever engages during a
+# leader dropout and cannot change normal-case tracking behavior/tuning.
+PEER_RESCUE_ENABLE = False
+PEER_RESCUE_STEER_KP = 0.55
+PEER_RESCUE_MAX_STEER_BIAS = 0.45
+PEER_RESCUE_STEER_DEADZONE_H = 0.05
+PEER_RESCUE_AREA_GAIN = 0.15
+PEER_RESCUE_MAX_THROTTLE_BIAS = 0.12
+# Blend weight on the peer-rescue bias: keeps the peer sighting a *nudge*
+# toward correct formation spacing rather than fully overriding the KF's own
+# dead-reckoned heading/throttle for that frame.
+PEER_RESCUE_BLEND = 0.65
 YOLO_TRACK_STEER_GAIN = 0.92
 YOLO_TRACK_THROTTLE_GAIN = 1.08
 WAKE_TRACK_STEER_GAIN = 0.90
@@ -417,12 +469,23 @@ FOLLOWER_PAIR_CATCHUP_MAX = 0.0 #0.14
 STARTUP_STEER_LOCK_ENABLE = True
 STARTUP_STEER_LOCK_SEC = 2.0
 
-KV_STEER = 1.02
-RIGHT_KV_STEER = 0.78  # reduced from 1.02: less aggressive steer gain for Right to damp S-twist
+# KV_STEER / STEER_SLEW_RATE_PER_SEC used to be more aggressive than the
+# RIGHT_* variants (1.02 vs 0.78, 2.0 vs 1.2/s) under the theory that only
+# the Right follower suffered "S-twist" coupling between its side-camera and
+# front-camera steer terms. That coupling path no longer exists now that
+# SIDE_STEER_ENABLED = False (side_steer_bias is always 0.0), so the damping
+# was really just a plain front-camera steer-stability fix that happened to
+# be validated on Right first. Left never received it and is the one now
+# losing lock most (leader_det_rate ~61% vs Right's ~99% in run
+# 20260810_230641): under heavy wake occlusion Left's un-damped gain/slew
+# rate makes reacquisition jittery, which likely reinforces track loss.
+# Unified to the previously Right-only (damped) values for both sides.
+KV_STEER = 0.78
+RIGHT_KV_STEER = 0.78
 STEER_DEADZONE_H = 0.020    # reduced from 0.06: P-term must be active for gentle-circle steer (~0.025 error)
 FINAL_STEER_DEADZONE_H = 0.012  # reduced from 0.045: must be < P-term steer so output passes the filter
-STEER_SLEW_RATE_PER_SEC = 2.0   # reduced from 4.0 to cap command rate and reduce jerkiness
-RIGHT_STEER_SLEW_RATE_PER_SEC = 1.2  # reduced from 2.0: slower Right steer changes damp S-twist coupling
+STEER_SLEW_RATE_PER_SEC = 1.2
+RIGHT_STEER_SLEW_RATE_PER_SEC = 1.2
 SEARCH_MODE_STEER = 0.5
 KV_THROTTLE_P = 0.00014
 FOLLOW_BASE_THROTTLE = 0.40
@@ -432,6 +495,29 @@ RIGHT_THROTTLE_SMOOTH_ALPHA = 0.40  # more smoothing for Right: damps throttle o
 # Leader-speed feedforward: at target distance, provides ~0.65 throttle to match leader's 18 m/s cruise,
 # preventing the deadzone → coast → fall behind → max-throttle chase bang-bang oscillation.
 LEADER_SPEED_THROTTLE_FF = 0.036
+
+# Blind-loss cruise fallback: what to do once the front camera has been
+# fully lost (past TRACK_HOLD_SEC / KF_COAST_MAX_SEC coasting -- see above --
+# with no peer-rescue sighting either) and DISABLE_SEARCH_MODE would
+# otherwise zero throttle/steer outright. A dead-in-the-water follower falls
+# further behind every second the leader keeps moving (observed: Left
+# follower's pos_error_m spiked to ~760m during a long wake occlusion in run
+# 20260810_230641, while it should track ~30m spacing), and a stopped boat
+# has nothing for the Kalman filter, peer-rescue, or reacquisition-time
+# far-boost to build back on top of. Instead, keep pace with the leader's
+# broadcast cruise speed (the same signal LEADER_SPEED_THROTTLE_FF already
+# uses while actively tracking -- this is not the leader's position, just
+# its current speed) and hold the last commanded steer, decaying it to
+# straight-ahead over BLIND_LOSS_STEER_HOLD_DECAY_SEC so a brief dropout
+# keeps curving with the leader's turn but a long-duration loss doesn't
+# extrapolate a stale turn indefinitely. This is a "don't fall further
+# behind" floor, not a chase -- once vision reacquires, normal tracking
+# (far-boost, leader-speed feedforward, turn catchup) does the actual
+# catching up.
+BLIND_LOSS_CRUISE_ENABLE = True
+BLIND_LOSS_CRUISE_MIN_THROTTLE = 0.22
+BLIND_LOSS_CRUISE_MAX_THROTTLE = 0.62
+BLIND_LOSS_STEER_HOLD_DECAY_SEC = 3.0
 
 # Area thresholds (How close/far the target is based on its image area, used for various heuristics and tuning)
 YOLO_AREA_OPT = 250000

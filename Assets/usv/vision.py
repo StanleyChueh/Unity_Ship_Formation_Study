@@ -134,6 +134,16 @@ def lock_visual_reference(boat_side, role, center_offset, area, target_kind=None
         area_key = "desired_front_area"
         kind_key = "desired_front_target_kind"
         target_offset = VISION_FRONT_TARGET_OFFSET
+    elif role == "side_follower":
+        # Independent calibration of "what the peer follower boat looks like
+        # from the side camera when formation is correct", captured the first
+        # time it's glimpsed regardless of SIDE_CAMERA_TARGET_MODE. Used only
+        # by the peer-rescue fallback while the leader is lost.
+        init_key = "peer_visual_initialized"
+        offset_key = "desired_peer_offset"
+        area_key = "desired_peer_area"
+        kind_key = "desired_peer_target_kind"
+        target_offset = VISION_SIDE_TARGET_OFFSET
     else:
         init_key = "side_visual_initialized"
         offset_key = "desired_side_offset"
@@ -246,6 +256,7 @@ def reset_vision_state(stream_name):
         state["predicted_offset"] = 0.0
         state["predicted_area"] = 0.0
         state["prediction_confidence"] = 0.0
+        state["kf_coast_time"] = 0.0
 
 
 def detect_stern_wake(frame, preferred_offset=None, reference_bbox=None):
@@ -583,6 +594,70 @@ def update_track_prediction(state, center_offset, center_y_norm, area, current_t
     state["predicted_offset"] = predicted_offset
     state["predicted_area"] = predicted_area
     state["prediction_confidence"] = confidence
+    # anchor for coast_track_prediction's dt bookkeeping on the next loss episode
+    state["kf_coast_time"] = current_time
+
+
+def coast_track_prediction(state, current_time):
+    """Advance the track estimate with no new measurement (leader bbox lost).
+
+    Runs the KF predict step (dead-reckoning on the last known velocity) every
+    frame the leader stays undetected, instead of freezing predicted_offset /
+    predicted_area at their last-detection values. Without this, the KF never
+    advances while the bbox is missing, so "prediction" during an occlusion was
+    a no-op and control fell back to a static last-known offset.
+    """
+    prev_time = state.get("kf_coast_time", state.get("track_prev_measurement_time", current_time))
+    dt = clamp(current_time - prev_time, 0.0, 0.5)
+    state["kf_coast_time"] = current_time
+
+    kf = state.get("kf", None)
+    coasted = False
+    offset_std = None
+    if kf is not None and dt > 1e-3:
+        try:
+            if hasattr(kf, "set_last_dt"):
+                kf.set_last_dt(dt)
+            vel_damping = float(KF_COAST_VEL_DAMPING_PER_SEC) ** dt
+            kf.predict(dt, vel_damping=vel_damping)
+            sx = kf.state()
+            if hasattr(kf, "offset_uncertainty"):
+                offset_std = kf.offset_uncertainty()
+        except Exception:
+            sx = None
+        if sx is not None:
+            state["predicted_offset"] = clamp(float(sx[0]), -1.0, 1.0)
+            state["predicted_area"] = max(0.0, float(sx[2]))
+            state["track_offset_velocity"] = float(sx[1])
+            state["track_area_velocity"] = float(sx[3])
+            coasted = True
+
+    if not coasted and dt > 1e-3:
+        # No KF available (disabled or never initialized): decay the last
+        # measured velocity and keep extrapolating the offset/area with it,
+        # matching the non-KF idle-decay behavior used while detected.
+        state["track_offset_velocity"] = state.get("track_offset_velocity", 0.0) * PREDICTION_STALE_DECAY
+        state["track_area_velocity"] = state.get("track_area_velocity", 0.0) * PREDICTION_STALE_DECAY
+        state["predicted_offset"] = clamp(
+            state.get("predicted_offset", state.get("last_known_offset", 0.0)) + state["track_offset_velocity"] * dt,
+            -1.0,
+            1.0,
+        )
+        state["predicted_area"] = max(
+            0.0,
+            state.get("predicted_area", state.get("last_known_area", 0.0)) + state["track_area_velocity"] * dt,
+        )
+
+    if coasted and offset_std is not None:
+        # Let the filter's own widening uncertainty drive confidence down,
+        # instead of a fixed per-frame decay constant: the longer/rockier the
+        # coast, the faster the KF's covariance grows, and the faster we stop
+        # trusting the dead-reckoned estimate.
+        state["prediction_confidence"] = clamp(1.0 - (offset_std / float(KF_CONF_STD_ZERO)), 0.0, 1.0)
+    else:
+        state["prediction_confidence"] = state.get("prediction_confidence", 0.0) * PREDICTION_STALE_DECAY
+    state["target_center_offset"] = state["predicted_offset"]
+    state["target_area"] = state["predicted_area"]
 
 
 def update_static_track(state, center_offset, center_y_norm, area, current_time):
@@ -597,6 +672,7 @@ def update_static_track(state, center_offset, center_y_norm, area, current_time)
     state["predicted_offset"] = center_offset
     state["predicted_area"] = area
     state["prediction_confidence"] = 0.0
+    state["kf_coast_time"] = current_time
 
 
 def tcp_camera_receiver_thread(port, stream_name):
@@ -1059,6 +1135,17 @@ def cv_processing_thread():
                         state["side_follower_detected"] = follower_target is not None
                         state["side_follower_area"] = float(follower_target["area"]) if follower_target is not None else 0.0
                         state["side_follower_center_offset"] = float(follower_target["center_offset"]) if follower_target is not None else 0.0
+                        if follower_target is not None:
+                            # Calibrate the peer-rescue reference off every raw
+                            # follower sighting, independent of which target
+                            # SIDE_CAMERA_TARGET_MODE actually selected as primary.
+                            lock_visual_reference(
+                                boat_side,
+                                "side_follower",
+                                follower_target["center_offset"],
+                                follower_target["area"],
+                                target_kind="follower",
+                            )
 
                     if best_box is not None:
                         if role == "front" and detection_method in ("YOLO", "FUSED"):
@@ -1147,15 +1234,21 @@ def cv_processing_thread():
                         overlay_prediction_conf = state.get("prediction_confidence", 0.0)
                     else:
                         time_since_seen = current_time - state.get("last_detection_time", 0.0)
-                        if state.get("last_known_method") is not None and time_since_seen <= TRACK_HOLD_SEC:
+                        kf_active = bool(runtime_settings.get("enable_kalman_filter", ENABLE_KALMAN_FILTER)) and state.get("kf") is not None
+                        hold_window = KF_COAST_MAX_SEC if kf_active else TRACK_HOLD_SEC
+                        within_hold = state.get("last_known_method") is not None and time_since_seen <= hold_window
+                        if within_hold and kf_active and time_since_seen > TRACK_HOLD_SEC:
+                            # Past the base hold window: a KF track keeps coasting only
+                            # while its own (decaying) confidence is still meaningful.
+                            within_hold = state.get("prediction_confidence", 0.0) >= KF_COAST_MIN_CONF
+
+                        if within_hold:
                             state["target_detected"] = True
                             state["target_stale"] = True
                             state["method"] = state["last_known_method"]
                             state["target_bbox"] = None
-                            state["target_area"] = state.get("last_known_area", 0.0)
-                            state["target_center_offset"] = state.get("last_known_offset", 0.0)
                             state["target_kind"] = state.get("last_known_target_kind")
-                            state["prediction_confidence"] = state.get("prediction_confidence", 0.0) * PREDICTION_STALE_DECAY
+                            coast_track_prediction(state, current_time)
                             overlay_depth_status = state.get("depth_status", "Depth idle")
                             overlay_offset_velocity = state.get("track_offset_velocity", 0.0)
                             overlay_vertical_velocity = state.get("track_vertical_velocity", 0.0)
@@ -1183,6 +1276,7 @@ def cv_processing_thread():
                             state["prediction_confidence"] = 0.0
                             state["kf"] = None
                             state["kf_rejected"] = False
+                            state["kf_coast_time"] = 0.0
                             if role == "side":
                                 state["depth_status"] = "Side camera idle"
                             elif depth_estimator is not None and not depth_estimator.available:
