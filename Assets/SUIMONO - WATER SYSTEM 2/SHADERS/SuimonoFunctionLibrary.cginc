@@ -5,6 +5,7 @@
 		float4 vertex : POSITION;
 		float4 tangent : TANGENT;
 		float3 normal : NORMAL;
+		float4 color : COLOR;   // USV: wake foam in .a, written by SuimonoVert
 		float2 texcoord : TEXCOORD0;
 		float2 texcoord1 : TEXCOORD1;
 		float2 texcoord2 : TEXCOORD2;
@@ -13,11 +14,30 @@
 	sampler2D _suimono_TransTex;
 	sampler2D _suimono_CausticTex;
 	sampler2D _suimono_NormalsTex;
-	sampler2D _suimono_WakeTex;
+	// USV stern-wave field (USVWakeField.cs): R = surface height (m), G = foam 0..1.
+	// Shares the normal texture sampler to stay within the 16-sampler limit.
+	// Vertex samples displace geometry; pixel samples preserve narrow crests and wash.
+	// The unused screen-space wake texture is replaced by this world-space field.
+	float usvWakeFoam;
+	UNITY_DECLARE_TEX2D(_NormalTexS);
+	UNITY_DECLARE_TEX2D_NOSAMPLER(_usvWakeTex);
+	float4 _usvWakeRect;   // x0, z0, size, 1/size
+	float _usvWakeOn;
+
+	float4 USVNormalSampleLod(float4 uv){ return UNITY_SAMPLE_TEX2D_LOD(_NormalTexS, uv.xy, uv.w); }
+
+    #include "../../Resources/USVOceanSurface.cginc"
+
+	float2 USVWakeSample(float3 wpos){
+		if (_usvWakeOn < 0.5) return float2(0,0);
+		float2 uv = (wpos.xz - _usvWakeRect.xy) * _usvWakeRect.w;
+		float border = saturate(min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * 20.0);
+		return UNITY_SAMPLE_TEX2D_SAMPLER_LOD(_usvWakeTex, _NormalTexS, uv, 0).rg * border;
+	}
 	sampler2D _suimono_shorelineTex;
 	sampler2D _ReflectionTex;
 	sampler2D _CameraDepthTexture;
-	sampler2D _NormalTexS;
+
 	sampler2D _NormalTexD;
 	sampler2D _NormalTexR;
 	sampler2D _FoamTex;
@@ -148,6 +168,9 @@
 		float2 uv3_WaveTex : TEXCOORD2;
 		float4 screenPos;
 		float3 worldRefl;
+		float3 worldPos;
+		float3 worldNormal;
+		float4 color : COLOR;   // USV: .a = stern-wave foam
 		INTERNAL_DATA
 	};
 
@@ -202,7 +225,7 @@
 		//vertex setup
 		float4 pos = UnityObjectToClipPos(v.vertex);
 		float4 projPos = ComputeScreenPos(pos);
-		float screenHeight = tex2Dproj(_suimono_WakeTex, projPos).b;
+		float screenHeight = 0.0; // _suimono_WakeTex slot reused by _usvWakeTex
 
 		//calculate height
 		float2 texUV = v.texcoord.xy*float2(_scaleUVs.x,_scaleUVs.y);
@@ -211,8 +234,8 @@
 		float2 waveOff1 = float2(_suimono_uvx,_suimono_uvy);
 
 		//Calm Wave Height
-		float CheightPos0 = saturate(lerp((float)-0.035, (float)0.5, tex2Dlod(_NormalTexS, float4(texUV + flowSpeed + waveOff1,0,0)).a ));
-		float CheightPos1 = saturate(lerp((float)-0.035, (float)0.5, tex2Dlod(_NormalTexS, float4(texUV * 0.75 - (flowSpeed*0.25) + (waveOff1*0.75),0,0)).a ));
+		float CheightPos0 = saturate(lerp((float)-0.035, (float)0.5, USVNormalSampleLod( float4(texUV + flowSpeed + waveOff1,0,0)).a ));
+		float CheightPos1 = saturate(lerp((float)-0.035, (float)0.5, USVNormalSampleLod( float4(texUV * 0.75 - (flowSpeed*0.25) + (waveOff1*0.75),0,0)).a ));
 
 		//Turbulent Wave Height
 		float TheightPos0 = saturate(lerp((float)-0.035, (float)0.5, tex2Dlod(_NormalTexD, float4(texUV + flowSpeed + waveOff1,0,0)).a ));
@@ -264,7 +287,7 @@
 			useY = lerp((half)useY, (half)0.0, (shoreTex.r + shoreTex.b) * _shorelineNorm * 0.5);
 
 			//calculate wake wave height
-			half4 vWake = tex2Dlod(_suimono_WakeTex, float4(p.xy,0,0));
+			half4 vWake = half4(0,0,0,0); // _suimono_WakeTex slot reused by _usvWakeTex
 			half4 NWake = tex2Dlod(_suimono_NormalsTex, float4(p.xy,0,0));
 			useY += saturate(vWake.b) * 0.15;
 
@@ -277,6 +300,15 @@
 
 		//normalize`
 		//useY = lerp((half)useY, (half)0.0, (1-saturate(shoreTex.r + shoreTex.b)) * _shorelineNorm);
+
+		//USV stern-wave field: height (world m -> object units), surface tilt and wash foam
+		float3 usvWorldV = mul(unity_ObjectToWorld, v.vertex).xyz;
+		float2 usvWake = USVWakeSample(usvWorldV);
+		float usvScaleY = max(1e-4, length(float3(unity_ObjectToWorld[0].y, unity_ObjectToWorld[1].y, unity_ObjectToWorld[2].y)));
+		if (_usvOceanOn > 0.5) useY = USVOceanSample(usvWorldV.xz).x / usvScaleY;
+		useY += usvWake.r / usvScaleY;
+		v.color = float4(1, 1, 1, usvWake.g);
+
 
 		//assign vertex height
 		v.vertex.y = v.vertex.y + useY;
@@ -298,8 +330,8 @@
 		float pFac = lerp((float)1.0, (float)0.464646, _Suimono_isLinear);
 
 		//Calm Wave Normals and Height
-		half4 CnormalTex0 = tex2D(_NormalTexS, uvs + flowSpeed + waveOff1);
-		half4 CnormalTex1 = tex2D(_NormalTexS, uvs * 0.75 - (flowSpeed*0.25) + (waveOff1*0.75));
+		half4 CnormalTex0 = UNITY_SAMPLE_TEX2D(_NormalTexS, uvs + flowSpeed + waveOff1);
+		half4 CnormalTex1 = UNITY_SAMPLE_TEX2D(_NormalTexS, uvs * 0.75 - (flowSpeed*0.25) + (waveOff1*0.75));
 
 		CnormalTex0.rgb = pow(CnormalTex0.rgb,pFac)*2.0-1.0;
 		CnormalTex1.rgb = pow(CnormalTex1.rgb,pFac)*2.0-1.0;
@@ -531,7 +563,7 @@
 			foamDepth = (foamDepth);
 			foam.a = (foamDepth * _FoamColor.a);
 
-			foam.rgb = _FoamColor.rgb;
+			foam.rgb = lerp(_FoamColor.rgb, half3(0.86,0.94,1.0), saturate(usvWakeFoam / max(foamDepth,0.001)));
 
 			//combine extreme edge darken
 			foam.rgb = lerp((half3)foam.rgb, half3(0,0,0), edgeDarkenDepth*0.4*_FoamColor.a);
@@ -546,7 +578,9 @@
 			foam.a = foam.a * lerp((half)1.0, (half)0.8, fresnel-(spc*1.75));
 
 			//foam Lighting
-			foam.rgb = foam.rgb * outLight.rgb;
+			half usvFoamWeight = saturate(usvWakeFoam / max(foamDepth,0.001));
+            half usvLight = max(0.4, dot(outLight.rgb,half3(0.2126,0.7152,0.0722)));
+            foam.rgb *= lerp(outLight.rgb, half3(usvLight,usvLight,usvLight), usvFoamWeight);
 
 			//Add foam to main Return
 			col.rgb = lerp((fixed3)col.rgb, (fixed3)foam.rgb, foamDepth * _FoamColor.a * (1.0-edgeDarkenDepth));
@@ -659,6 +693,12 @@ if (_sui_metalTestMode == 3){
 		float4 uv0 = IN.screenPos;
 		uv0 = float4(max(0.001f, uv0.x),max(0.001f, uv0.y),max(0.001f, uv0.z),max(0.001f, uv0.w));
 		o.Normal = SuimonoCalcNormal(IN.uv_NormalTexS, IN.uv3_WaveTex.y, uv0);
+        float3 usvOcean = USVOceanSample(IN.worldPos.xz);
+        if (_usvOceanOn > 0.5){
+            // Refraction/foam masks must not suggest unrelated texture swells.
+            heightMask = max(0.0,usvOcean.x);
+            heightMaskRWave = 0.0;
+        }
 
 		//get screen Textures ------------------------------------------------------------------------------------------------------
 		float4 uv6 = IN.screenPos;
@@ -678,6 +718,24 @@ if (_sui_metalTestMode == 3){
 			o.Normal = lerp(o.Normal,half3(0,0,1),screenNormals.a);
 		#endif
 		o.Normal = float3(o.Normal.xy + normalsMask.xy, o.Normal.z*normalsMask.z);
+
+		// Sample crests per pixel: small wake wavelengths are finer than the ocean mesh.
+        float2 usvSurface = USVWakeSample(IN.worldPos);
+        const float usvStep = 0.5;
+        float usvHx = (USVWakeSample(IN.worldPos + float3(usvStep,0,0)).r - USVWakeSample(IN.worldPos - float3(usvStep,0,0)).r) / (2.0*usvStep);
+        float usvHz = (USVWakeSample(IN.worldPos + float3(0,0,usvStep)).r - USVWakeSample(IN.worldPos - float3(0,0,usvStep)).r) / (2.0*usvStep);
+        float3 ocean = usvOcean;
+        float3 usvSlope = float3(-usvHx-ocean.y,0,-usvHz-ocean.z);
+        float3 usvT = normalize(WorldNormalVector(IN, float3(1,0,0)));
+        float3 usvB = normalize(WorldNormalVector(IN, float3(0,1,0)));
+        o.Normal = normalize(o.Normal);
+        if (_usvOceanOn > 0.5){
+            // Keep sub-hull ripples subordinate to the actual geometric slopes.
+            o.Normal.xy *= 0.12 * _usvOceanDetail;
+            o.Normal = normalize(o.Normal);
+        }
+        o.Normal.xy += float2(dot(usvSlope,usvT), dot(usvSlope,usvB)) * abs(o.Normal.z);
+        o.Normal = normalize(o.Normal);
 
 		//get distorted screen Textures --------------------------------------------------------------------------------------------
 		float4 uv1 = IN.screenPos;
@@ -937,6 +995,13 @@ if (_sui_metalTestMode == 3){
 if (_enableFoam == 0){
 	foamDepth = 0;
 }
+
+        // Two moving foam scales leave open water between turbulent streaks.
+        half usvFoam = saturate(usvSurface.g);
+        half usvCover = smoothstep(0.55, 0.85, foamTex.r * 0.55 + foamTex.b * 0.45 + usvFoam * 0.15);
+        usvWakeFoam = usvCover * usvFoam * 0.8;
+        foamDepth = saturate(foamDepth + usvWakeFoam);
+
 
 		//set transparent distance mask
 		transDist = saturate((0.0+lerp((float)1.0, (float)0.0, uv0.w/(_suimonoTransDist*0.65) )));

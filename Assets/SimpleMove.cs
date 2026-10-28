@@ -49,6 +49,10 @@ public class SimpleMove : MonoBehaviour
     // rest every second while the followers were already released.
     [System.NonSerialized] public string appliedTrajectorySignature;
 
+    // World-space pitch/roll from the water surface, set by HullWaveResponse.
+    // The trajectory owns position and yaw, so the wave tilt is composed here.
+    [System.NonSerialized] public Quaternion waveAttitude = Quaternion.identity;
+
     private Rigidbody rb;
     private ParticleSystem.EmissionModule wakeEmission;
     private Vector3 spawnPosition;
@@ -189,9 +193,9 @@ public class SimpleMove : MonoBehaviour
         {
             desiredPlanarForward.Normalize();
             Quaternion yawDelta = Quaternion.FromToRotation(spawnForwardPlanar, desiredPlanarForward);
-            rb.MoveRotation(yawDelta * spawnRotation);
+            rb.MoveRotation(waveAttitude * yawDelta * spawnRotation);
 
-                Vector3 planarVelocity = desiredPlanarForward * currentTrajectorySpeed;
+            Vector3 planarVelocity = desiredPlanarForward * currentTrajectorySpeed;
             rb.velocity = new Vector3(planarVelocity.x, rb.velocity.y, planarVelocity.z);
         }
         else

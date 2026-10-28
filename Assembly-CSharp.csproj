@@ -72,6 +72,7 @@
     <Compile Include="Assets/FollowerCameraLookAt.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_ControllerMaster.cs" />
     <Compile Include="Assets/SimpleCameraFollow.cs" />
+    <Compile Include="Assets/USVOceanSurface.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/ui_suimonoHandler.cs" />
     <Compile Include="Assets/IgniteCoders/Simple Water Shader/Resources/WaterReflection.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/utility_SaveMesh.cs" />
@@ -86,6 +87,7 @@
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/utility_ConvertToSurface.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/Suimono_UnderwaterFog.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/Suimono_ShorelineObject.cs" />
+    <Compile Include="Assets/HullWaveResponse.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_ControllerCharacter.cs" />
     <Compile Include="Assets/ShipStabilizer.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/ui_suimonoFps.cs" />
@@ -107,6 +109,7 @@
     <Compile Include="Assets/ShipUDPInterface.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_LightHandler.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/fx_soundModule.cs" />
+    <Compile Include="Assets/USVWakeField.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/Random.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/Suimono_DistanceBlur.cs" />
     <Compile Include="Assets/Sender.cs" />
@@ -128,10 +131,12 @@
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Custom/SUIMONO_PRESET_CustomTest.txt" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoDepthMask.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Built-In Presets/SUIMONO_PRESET_Hot Spring Murky.txt" />
+    <None Include="Assets/Resources/USVWakeField.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_Depth.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_depthmask2.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Custom/SUIMONO_PRESET_Custom Example 1.txt" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoDepth.shader" />
+    <None Include="Assets/Resources/USVFoamParticle.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Built-In Presets/SUIMONO_PRESET_Blue Ocean with Waves.txt" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Built-In Presets/SUIMONO_PRESET_Lava Flow.txt" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_effect_reflect.shader" />
@@ -142,6 +147,7 @@
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Built-In Presets/SUIMONO_PRESET_Mud Thick Brown.txt" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoUnderwaterFog.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Built-In Presets/SUIMONO_PRESET_Swimming Pool.txt" />
+    <None Include="Assets/Resources/USVOceanSurface.cginc" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_effect_splash.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/OBJECTS/Shaders/Suimono2_Demo_HairSpec.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Built-In Presets/SUIMONO_PRESET_Calm Refraction Only.txt" />

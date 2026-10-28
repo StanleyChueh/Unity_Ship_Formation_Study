@@ -1,0 +1,20 @@
+Build: Unity 2022.3.62f3 Linux64; shader and C# errors: 0.
+Normal run, CPU/GPU agreement (8,281 sample points per frame):
+[Validation] CPU/GPU 0_field_t5: samples=8281 max_error_m=0.000229 mean_error_m=0.000000
+[Validation] CPU/GPU 1_field_t9: samples=8281 max_error_m=0.000225 mean_error_m=0.000001
+[Validation] CPU/GPU 2_field_t13: samples=8281 max_error_m=0.000170 mean_error_m=0.000001
+[Validation] CPU/GPU 3_field_t18: samples=8281 max_error_m=0.000198 mean_error_m=0.000001
+[Validation] CPU/GPU 4_field_t24: samples=8281 max_error_m=0.000231 mean_error_m=0.000002
+[Validation] CPU/GPU 5_field_t32: samples=8281 max_error_m=0.000219 mean_error_m=0.000001
+Stress run, amplitude 3x; right follower commanded to cross the leader track:
+[Validation] CPU/GPU 0_field_t5: samples=8281 max_error_m=0.000400 mean_error_m=0.000001
+[Validation] CPU/GPU 1_field_t9: samples=8281 max_error_m=0.000472 mean_error_m=0.000002
+[Validation] CPU/GPU 2_field_t13: samples=8281 max_error_m=0.000455 mean_error_m=0.000004
+[Validation] CPU/GPU 3_field_t18: samples=8281 max_error_m=0.000363 mean_error_m=0.000004
+[Validation] CPU/GPU 4_field_t24: samples=8281 max_error_m=0.000608 mean_error_m=0.000004
+[Validation] CPU/GPU 5_field_t32: samples=8281 max_error_m=0.001382 mean_error_m=0.000004
+
+Production YOLO controller (private ports, scratch project):
+[Metrics-Final] elapsed=  33.7s
+[Metrics-Final] Left: leader=100.0% follower=  0.0% stale=  0.0% Δsteer=0.001 Δthr=0.011 predMAE=0.003 flips=  36
+[Metrics-Final] Right: leader=100.0% follower=  0.0% stale=  0.0% Δsteer=0.001 Δthr=0.010 predMAE=0.003 flips=  48

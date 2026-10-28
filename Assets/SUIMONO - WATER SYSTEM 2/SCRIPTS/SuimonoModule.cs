@@ -1589,6 +1589,9 @@ namespace Suimono.Core
 							getheight += (getheightT * suimonoObject.waveHeight);
 							getheight += (getheightR * suimonoObject.lgWaveHeight);
 							getheight = Mathf.Lerp(baseHeight,getheight,suimonoObject.useHeightProjection);
+							// Match the rendered world-space swells, then add the same stern waves.
+							if (USVOceanSurface.Active) getheight = baseHeight + USVOceanSurface.SampleHeight(testObject);
+							getheight += USVWakeField.SampleHeight(testObject);
 						}
 					}
 				}

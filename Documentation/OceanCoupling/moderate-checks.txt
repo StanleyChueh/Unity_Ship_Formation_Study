@@ -1,0 +1,7 @@
+[OceanValidation] 0_field_t5 height_and_slope_max_error=0.0000044
+[OceanValidation] 1_field_t9 height_and_slope_max_error=0.0000032
+[OceanValidation] 2_field_t13 height_and_slope_max_error=0.0000058
+[OceanValidation] 3_field_t18 height_and_slope_max_error=0.0000058
+[OceanValidation] 4_field_t24 height_and_slope_max_error=0.0000097
+[OceanValidation] 5_field_t32 height_and_slope_max_error=0.0000099
+[Capture] done

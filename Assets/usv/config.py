@@ -91,7 +91,7 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = True
+ENABLE_KALMAN_FILTER = False
 # If False, side-camera detections/predictions are ignored by the controller.
 # Set this in `config.py` to disable side-camera usage at startup.
 ENABLE_SIDE_DETECTION = False
@@ -620,7 +620,7 @@ SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": -1.0}
 # DETECTION_DROPOUT_ENABLE can be set to False — the actual
 # camera shake from the Unity physics replaces the simulation.
 #
-# Beaufort-anchored preset reference:
+# Relative presets (not calibrated Beaufort measurements):
 #   Preset      | waveH | turb  | lgH  | lgSc  | wSc  | flow  | tilt
 #   ------------+-------+-------+------+-------+------+-------+-----
 #   Calm  B0–2  | 0.10  | 0.02  | 0.05 | 0.100 | 0.20 | 0.003 | 0.05
@@ -629,35 +629,36 @@ SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": -1.0}
 #   Storm B9–10 | 1.40  | 0.50  | 2.00 | 0.012 | 0.70 | 0.150 | 1.50
 #   Typhoon B12 | 1.80  | 0.80  | 3.50 | 0.008 | 0.80 | 0.350 | 1.80
 # =========================================================
-WAVE_CONTROL_ENABLE          = False
+# Ambient swells use USVOceanSurface: geometry, shading and buoyancy share
+# one world-space wave field. lgWaveHeight is its height budget in metres
+# (sum of component peak-to-trough heights; local waves are usually smaller).
+# Calm: 0.0; gentle default: 0.55; large-wave test: 2.0.
+# Camera motion comes from the hull's response to that same surface.
+WAVE_CONTROL_ENABLE          = True
 # If True, wave/rain settings are held back until after startup sync releases
 # (i.e. after all cameras connect and visual lock is established).
 # Set False only if you need waves applied before the formation locks (e.g. pre-wave
 # stress tests), but this WILL destabilize boats during startup at Storm/Typhoon level.
 WAVE_APPLY_AFTER_STARTUP     = True
 WAVE_CONTROL_PORT            = 5070       # must match WaveController.listenPort
-SUIMONO_WAVE_HEIGHT          = 1.80       # visual normal-map ripple (no physics); >0.65 causes YOLO glitter
-SUIMONO_TURBULENCE           = 0.80       # surface turbulence / glint intensity
-# lgWaveHeight is the PHYSICAL wave geometry — it moves boats via buoyancy.
-# SUIMONO's own Beaufort-12 ceiling is 3.0; values above that are beyond the
-# design range and will capsize the boats.  ShipStabilizer uprightTorque must be
-# raised to ≥15000 to survive these conditions:
-#   1.0 = Rough (B6–7)   boats handle it fine
-#   2.0 = Storm (B9–10)  boats rock heavily but survive
-#   2.5 = near-Typhoon   requires uprightTorque ≥ 15000; push to 3.0 only with ≥ 18000
-SUIMONO_LARGE_WAVE_HEIGHT    = 3.25       # physical wave height — near-Typhoon; capsizes above ~3.0
-SUIMONO_LARGE_WAVE_SCALE     = 0.008      # spatial frequency of large waves (longer swells at typhoon scale)
-SUIMONO_WAVE_SCALE           = 0.80       # small-wave detail density
-SUIMONO_FLOW_SPEED           = 0.350      # surface current speed
-SUIMONO_CAMERA_TILT_STRENGTH = 1.80       # camera pitch/roll from wave surface normal
+SUIMONO_WAVE_HEIGHT          = 0.50       # visual normal-map ripple (no physics); >0.65 causes YOLO glitter
+SUIMONO_TURBULENCE           = 0.12       # surface turbulence / glint intensity
+# Shared geometric swell height budget (metres). Increasing it affects both
+# the visible water and hull/camera response. Scale controls wavelengths:
+# increasing lgWaveScale shortens them; reducing it lengthens them.
+SUIMONO_LARGE_WAVE_HEIGHT    = 0.55       # swell height budget in metres
+SUIMONO_LARGE_WAVE_SCALE     = 0.040      # spatial frequency of large waves
+SUIMONO_WAVE_SCALE           = 0.45       # small-wave detail density
+SUIMONO_FLOW_SPEED           = 0.010      # surface current speed
+SUIMONO_CAMERA_TILT_STRENGTH = 0.50       # legacy unmounted cameras only; hull-mounted cameras inherit hull motion
 
 # =========================================================
 # Leader stern-wake control (sent to Unity's WaveController on the same port)
-# Drives the fx_boatwake ParticleSystem parented under the Leader boat.
-# This is a *visual occlusion* stress test: a denser, larger, more opaque wake
-# hides the leader hull from the follower's front camera, so YOLO detection
-# drops out and the tracker must ride on the Kalman prediction.
-# It does NOT change boat physics — only what the camera sees.
+# The default realistic style deforms the ocean and affects buoyancy and
+# hull attitude. Strength controls wave amplitude and spray; no_spray keeps
+# the physical waves and surface foam while disabling airborne droplets.
+# The optional stress style uses legacy fx_boatwake particles for visual
+# occlusion experiments; its particle settings do not change boat physics.
 #
 # Scene-authored baseline (matches the Unity inspector today):
 #   rate 40/s, +10/m, life 5.0s, size 0.10-0.50, growth 12.69,
@@ -700,14 +701,19 @@ SUIMONO_CAMERA_TILT_STRENGTH = 1.80       # camera pitch/roll from wave surface 
 WAKE_CONTROL_ENABLE = True
 WAKE_ENABLE         = True     # False stops wake emission entirely (clean-water control run)
 WAKE_TARGET         = "all"  # "leader" = only the tracked boat's wake; "all" = every boat
-# "realistic": Unity's BoatSternWake on each boat, modelled on a small planing
-#   hull (leader ~4.6 m at ~18 m/s, Froude ≈ 2.7):
-#     - turbulent stern wash: opaque white water ~1.5 beams wide, flat on the
-#       water, fading over ~10 s along the boat's track;
-#     - Kelvin V arms at the 19.47° half-angle;
-#     - spray: rooster tail off the transom (rises ~2-3 m at cruise, height
-#       grows with speed²) and chine spray sheets.  Spray appears once the
-#       hull planes (Fr > 1) and is what partially hides the leader's hull
+# "realistic": physically modelled stern waves (Unity: USVWakeField +
+#   BoatSternWake + HullWaveResponse), for small planing hulls (leader ~4.6 m
+#   at ~18 m/s, Froude ≈ 2.7):
+#     - the water surface itself deforms into the Kelvin wave pattern
+#       (linear stationary-phase theory, hull-length filtered, so the V is
+#       narrower than 19.47° at this speed): crests ~0.35 m high near the
+#       leader, decaying astern, with the shading tilting on every crest;
+#     - turbulent stern wash and breaking crests appear as foam on the water;
+#     - every boat crossing the waves heaves (buoyancy) and pitches/rolls
+#       (HullWaveResponse), so boat-mounted cameras shake;
+#     - spray: rooster tail off the transom (~1-1.5 m at cruise, height ∝
+#       speed²) and chine spray sheets, drawn as droplet streaks.  It appears
+#       once the hull planes (Fr > 1) and partially hides the leader's hull
 #       from the follower cameras -- the detection-robustness stress.
 #   Only WAKE_REALISTIC_STRENGTH / WAKE_REALISTIC_SPRAY apply; the
 #   intensity/anchor settings below are ignored.
@@ -718,12 +724,12 @@ WAKE_TARGET         = "all"  # "leader" = only the tracked boat's wake; "all" = 
 #   farther than at spawn), which fakes "too close" and breaks the formation.
 WAKE_STYLE = "realistic"
 # Realistic-style intensity: 1.0 = realistic for this hull and speed.
-# Raise it for a harsher robustness test (2.0 ≈ rough-water heavy spray:
-# denser, larger, more opaque plume); 0.5 = light.  Scales foam opacity and
-# spray density/size/opacity together.
-WAKE_REALISTIC_STRENGTH = 1.0
-# False = foam only (no rooster tail / chine spray) -- a clean A/B against
-# the spray's occlusion effect.
+# Raise it for a harsher robustness test (2.0 ≈ twice the wave height and a
+# denser, larger, more opaque spray plume); 0.5 = light.  Scales stern-wave
+# height and spray density/size/opacity together.
+WAKE_REALISTIC_STRENGTH = 3.0
+# False = stern waves and foam only (no rooster tail / chine spray) -- a
+# clean A/B against the spray's occlusion effect.
 WAKE_REALISTIC_SPRAY = True
 WAKE_INTENSITY      = 1.0      # 0.0 = baseline … 1.0 = maximum
 # NOTE: run_summaries.csv shows leader_det_rate_pct ~99-100% at intensity=0.7 —

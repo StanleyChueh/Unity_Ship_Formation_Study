@@ -15,6 +15,7 @@ public class CameraWaveTilt : MonoBehaviour
 
     private SuimonoModule suimonoModule;
     private Quaternion defaultRotation;
+    private bool appliedLegacyTilt;
 
     void Start()
     {
@@ -25,6 +26,13 @@ public class CameraWaveTilt : MonoBehaviour
     void LateUpdate()
     {
         if (suimonoModule == null || targetBoat == null) return;
+        HullWaveResponse response = targetBoat.GetComponent<HullWaveResponse>();
+        if (response != null && response.isActiveAndEnabled && transform.IsChildOf(targetBoat))
+        {
+            if (appliedLegacyTilt) transform.localRotation = defaultRotation;
+            appliedLegacyTilt = false;
+            return;
+        }
 
         // 1. 取得船目前的座標
         Vector3 centerPos = targetBoat.position;
@@ -52,5 +60,6 @@ public class CameraWaveTilt : MonoBehaviour
         Quaternion targetRotation = waveRotation * defaultRotation;
 
         transform.localRotation = Quaternion.Slerp(transform.localRotation, targetRotation, Time.deltaTime * smoothSpeed);
+        appliedLegacyTilt = true;
     }
 }

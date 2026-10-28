@@ -30,10 +30,10 @@ public class WaveController : MonoBehaviour
     public int listenPort = 5070;
 
     [Header("Stern wake")]
-    [Tooltip("Install BoatSternWake on every boat at startup (flat foam wash + Kelvin V) instead of the legacy fx_boatwake puffs.")]
+    [Tooltip("Physically modelled stern waves at startup (USVWakeField water deformation + BoatSternWake spray + HullWaveResponse) instead of the legacy fx_boatwake puffs.")]
     public bool useRealisticWake = true;
-    [Tooltip("Optional foam material for BoatSternWake; a procedural foam material is used when empty.")]
-    public Material wakeFoamMaterial;
+    [Tooltip("Optional spray material for BoatSternWake; a procedural droplet material is used when empty.")]
+    public Material wakeSprayMaterial;
 
     private SuimonoModule suimonoModule;
     private CameraWaveTilt[] cameraWaveTilts;
@@ -59,7 +59,7 @@ public class WaveController : MonoBehaviour
     {
         public string cmd;
         public string style;            // "realistic" (BoatSternWake) or "stress" (legacy fx_boatwake)
-        public float strength;          // realistic style: 1 = realistic, 2 ≈ heavy (<= 0 means 1)
+        public float strength;          // realistic style: wave height + spray multiplier, 1 = realistic, 2 ≈ heavy (<= 0 means 1)
         public int no_spray;            // realistic style: 1 = foam only, no rooster tail / chine spray
         public int enable;              // 0 = stop wake emission entirely
         public string target;           // "leader" (default) or "all"
@@ -86,6 +86,7 @@ public class WaveController : MonoBehaviour
 
     void Start()
     {
+        if (GetComponent<USVOceanSurface>() == null) gameObject.AddComponent<USVOceanSurface>();
         suimonoModule = FindObjectOfType<SuimonoModule>();
         cameraWaveTilts = FindObjectsOfType<CameraWaveTilt>();
 
@@ -297,27 +298,39 @@ public class WaveController : MonoBehaviour
                 }
             }
 
+            // The stern-wave field deforms the water itself (crests, wash foam)
+            // and feeds buoyancy; one instance serves every boat.
+            USVWakeField field = GetComponent<USVWakeField>();
+            if (field == null) field = gameObject.AddComponent<USVWakeField>();
+            field.strength = strength;
+
             int count = 0;
             foreach (ShipUDPInterface boat in FindObjectsOfType<ShipUDPInterface>())
             {
                 bool isLeader = leaderTransform != null && boat.transform == leaderTransform;
                 bool want = enable && (!leaderOnly || isLeader);
 
+                // Always present: hull size for the wave field, and pitch/roll on
+                // the ambient sea even when the wake is off.
                 BoatSternWake wake = boat.GetComponent<BoatSternWake>();
-                if (wake == null)
-                {
-                    if (!want) continue;
-                    wake = boat.gameObject.AddComponent<BoatSternWake>();
-                }
-                if (wakeFoamMaterial != null) wake.foamMaterial = wakeFoamMaterial;
+                if (wake == null) wake = boat.gameObject.AddComponent<BoatSternWake>();
+                if (boat.GetComponent<HullWaveResponse>() == null) boat.gameObject.AddComponent<HullWaveResponse>();
+
+                if (wakeSprayMaterial != null) wake.sprayMaterial = wakeSprayMaterial;
                 wake.strength = strength;
                 wake.sprayEnabled = spray;
                 wake.enabled = want;
-                if (want) count++;
+                if (want)
+                {
+                    field.Register(boat.transform);
+                    count++;
+                }
             }
+            field.RemoveInactiveBoats();
+            field.enabled = enable;
 
             if (enable)
-                Debug.Log($"[WaveController] Realistic stern wake active on {count} boat(s); legacy fx_boatwake emitters silenced.");
+                Debug.Log($"[WaveController] Realistic stern wake active on {count} boat(s) (wave field + spray={(spray ? "on" : "off")}); legacy fx_boatwake emitters silenced.");
         }
         catch (System.Exception e)
         {
