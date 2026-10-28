@@ -1,0 +1,24 @@
+{
+  "ultralytics_version": "8.4.28",
+  "starting_model_classes": {
+    "0": "leader",
+    "1": "follower"
+  },
+  "train": {
+    "images": 3178,
+    "instances": 4474,
+    "corrupt": 0
+  },
+  "val": {
+    "images": 384,
+    "instances": 790,
+    "corrupt": 0
+  },
+  "test": {
+    "images": 384,
+    "instances": 746,
+    "corrupt": 0
+  },
+  "training_started": false,
+  "starting_checkpoint_sha256": "360c0efe3ec58725b186ef2bf4fcf037c19218ac7c30eb669eaad1723b6245f9"
+}

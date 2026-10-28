@@ -1,0 +1,17 @@
+{
+  "Assets/DatasetCapture/USVAutomaticDataset.cs.meta": "181342b84c2dbb921d0e08e9f24bc9641598261ba65ace97ba82c44e902577ef",
+  "Assets/DatasetCapture/Resources.meta": "581610cd276ba7dace446d886d738a32906a9cb611c04e35402e031cf9078a09",
+  "Assets/DatasetCapture/USVAutomaticDataset.cs": "a4eb91fc868dc490dcfff6ccf2584d293089056621db0728ff1872190b168a7d",
+  "Assets/DatasetCapture/Resources/USVDatasetIdentity.shader": "7ecb533a9016bfa1ebdc6eece6a30bbf0b1a0025f6fc7ae66b5e48d097d55d90",
+  "Assets/DatasetCapture/Resources/USVDatasetIdentity.shader.meta": "95d2001a68cabea52586f0914d6004d3a3dcf4700e817157ecb2abc2e9f0715f",
+  "Assets/Resources/USVSurfaceNoise.cginc": "f3d06ad18f0f95b6d8881dd8b28dfcaf948989d37efb2fccfff05d062c19388c",
+  "Assets/Resources/USVFoamParticle.shader.meta": "1ed98e66d950172b96e74c5e3b4b0679845d7aad1a6d7ff8db5d063a1aa889a6",
+  "Assets/Resources/USVOceanSurface.cginc": "82360465e05936f1b1109110bcf31d368f012bdb630bdca154655ee3d49968f9",
+  "Assets/Resources/USVWakeField.shader": "eb5fe6cffd85bbb7ce42ad056f54a0f6a2490b7515e48c0ae3f861f39059e0ea",
+  "Assets/Resources/USVSurfaceNoise.cginc.meta": "78a5ce1e009bbb67de0b08e331e8220ddc0597bb8dd455fc5794e2383c08504b",
+  "Assets/Resources/USVPhotographicSpray.png": "0aa314a2cf20cbc9de1ff67ff1604ebac31c53bbde4be93968bd90afac93f760",
+  "Assets/Resources/USVPhotographicSpray.png.meta": "d08d71187c6876a696bb9275527faaa61fc5a31e73fa647d1b168916e9bef563",
+  "Assets/Resources/USVOceanSurface.cginc.meta": "e687da51ea97d18bf7a122d5e350cefafab2c2e42c1f7c3193e85b7d29219be5",
+  "Assets/Resources/USVFoamParticle.shader": "1f5cdf4bb22f7e34e42bf952696339322625cd0a7f890b9668a4d47dfe42ab4c",
+  "Assets/Resources/USVWakeField.shader.meta": "23a8db688ac11f438ec0014ce80451cc5ed71279c4da57a322914f7d13bab668"
+}

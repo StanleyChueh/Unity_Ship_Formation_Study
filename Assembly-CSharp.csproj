@@ -72,6 +72,7 @@
     <Compile Include="Assets/FollowerCameraLookAt.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_ControllerMaster.cs" />
     <Compile Include="Assets/SimpleCameraFollow.cs" />
+    <Compile Include="Assets/DatasetCapture/USVAutomaticDataset.cs" />
     <Compile Include="Assets/USVOceanSurface.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/ui_suimonoHandler.cs" />
     <Compile Include="Assets/IgniteCoders/Simple Water Shader/Resources/WaterReflection.cs" />
@@ -120,6 +121,7 @@
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoDistanceBlur_orig.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_WakeMask.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Built-In Presets/SUIMONO_PRESET_Deep Dark Ocean.txt" />
+    <None Include="Assets/DatasetCapture/Resources/USVDatasetIdentity.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_Fog.shader" />
     <None Include="Assets/Resources/USVSurfaceNoise.cginc" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoFunctionLibrary.cginc" />

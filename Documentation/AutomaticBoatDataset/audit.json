@@ -1,0 +1,115 @@
+{
+  "splits": {
+    "test": {
+      "images": 384,
+      "negatives": 0,
+      "instances": {
+        "leader": 291,
+        "follower": 455
+      },
+      "sources": {
+        "unity_identity_mask": 384
+      },
+      "sizes": {
+        "640x360": 288,
+        "960x540": 96
+      }
+    },
+    "val": {
+      "images": 384,
+      "negatives": 0,
+      "instances": {
+        "leader": 334,
+        "follower": 456
+      },
+      "sources": {
+        "unity_identity_mask": 384
+      },
+      "sizes": {
+        "640x360": 288,
+        "960x540": 96
+      }
+    },
+    "train": {
+      "images": 3178,
+      "negatives": 368,
+      "instances": {
+        "follower": 2386,
+        "leader": 2088
+      },
+      "sources": {
+        "legacy_manual": 1162,
+        "unity_identity_mask": 1728,
+        "unity_background_crop": 288
+      },
+      "sizes": {
+        "1160x404": 409,
+        "1324x398": 363,
+        "1322x404": 390,
+        "640x360": 1440,
+        "320x180": 72,
+        "256x144": 161,
+        "960x540": 288,
+        "384x216": 46,
+        "480x270": 9
+      }
+    },
+    "legacy_val": {
+      "images": 291,
+      "negatives": 23,
+      "instances": {
+        "follower": 89,
+        "leader": 179
+      },
+      "sources": {
+        "legacy_manual": 291
+      },
+      "sizes": {
+        "1160x404": 107,
+        "1324x398": 80,
+        "1322x404": 104
+      }
+    }
+  },
+  "new_capture_runs": {
+    "test": [
+      "test_22_seed649902",
+      "test_23_seed650893",
+      "test_24_seed651884",
+      "test_25_seed652875"
+    ],
+    "val": [
+      "val_18_seed645938",
+      "val_19_seed646929",
+      "val_20_seed647920",
+      "val_21_seed648911"
+    ],
+    "train": [
+      "train_00_seed628100",
+      "train_01_seed629091",
+      "train_02_seed630082",
+      "train_03_seed631073",
+      "train_04_seed632064",
+      "train_05_seed633055",
+      "train_06_seed634046",
+      "train_07_seed635037",
+      "train_08_seed636028",
+      "train_09_seed637019",
+      "train_10_seed638010",
+      "train_11_seed639001",
+      "train_12_seed639992",
+      "train_13_seed640983",
+      "train_14_seed641974",
+      "train_15_seed642965",
+      "train_16_seed643956",
+      "train_17_seed644947"
+    ]
+  },
+  "exact_duplicates_removed": [],
+  "identity_mask_audit": "passed",
+  "annotation_policy": "Visible boat mesh bounds, water/opaque depth occlusion; transparent spray is not a hard occluder; no wake/spray in boat labels; all three boat instances including visible camera owner.",
+  "minimum_visible_pixels": 16,
+  "minimum_box_side_pixels": 3,
+  "training_background_crops": 288,
+  "legacy_split_warning": "Original legacy train/val frame grouping is unknown. legacy_val is reported separately, not used for new validation or test."
+}
