@@ -1,0 +1,13 @@
+[Validation] CPU/GPU 0_field_t5: samples=6889 max_error_m=0.000113 mean_error_m=0.000000
+[OceanValidation] 0_field_t5 height_and_slope_max_error=0.0000044
+[Validation] CPU/GPU 1_field_t9: samples=6889 max_error_m=0.000229 mean_error_m=0.000001
+[OceanValidation] 1_field_t9 height_and_slope_max_error=0.0000049
+[Validation] CPU/GPU 2_field_t13: samples=6889 max_error_m=0.000185 mean_error_m=0.000001
+[OceanValidation] 2_field_t13 height_and_slope_max_error=0.0000056
+[Validation] CPU/GPU 3_field_t18: samples=6889 max_error_m=0.000116 mean_error_m=0.000002
+[OceanValidation] 3_field_t18 height_and_slope_max_error=0.0000077
+[Validation] CPU/GPU 4_field_t24: samples=6889 max_error_m=0.000111 mean_error_m=0.000002
+[OceanValidation] 4_field_t24 height_and_slope_max_error=0.0000065
+[Validation] CPU/GPU 5_field_t32: samples=6889 max_error_m=0.000307 mean_error_m=0.000002
+[OceanValidation] 5_field_t32 height_and_slope_max_error=0.0000072
+[Capture] done

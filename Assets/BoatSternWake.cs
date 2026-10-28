@@ -10,8 +10,8 @@ using Random = UnityEngine.Random;
 ///
 /// The scene's hulls are small (leader ~4.6 m, followers ~3 m) and run at up
 /// to ~18 m/s, a length Froude number Fr = U/sqrt(gL) ≈ 2.7 (hard planing):
-///   - rooster tail: a jet off the transom, launched upward at ~0.15-0.3 U
-///     (height ∝ U², ~1-1.5 m at cruise) that barely keeps pace with the hull,
+///   - rooster tail: a jet off the transom, launched upward at ~0.16-0.32 U
+///     (height ∝ U², roughly 1-1.7 m at cruise) that barely keeps pace with the hull,
 ///     so it trails astern while rising and falling back;
 ///   - chine spray: sheets peeling off the hull sides near amidships.
 /// Droplets are drawn as velocity-stretched streaks with a droplet-cluster
@@ -29,14 +29,14 @@ public class BoatSternWake : MonoBehaviour
     public float hullBeam = 0f;
 
     [Header("Spray")]
-    [Tooltip("1 = realistic. Scales spray density, size and opacity; 2 ≈ rough/heavy. (Python: WAKE_REALISTIC_STRENGTH)")]
+    [Tooltip("1 = baseline. Scales spray density, size and opacity; 2 = heavier. (Python: WAKE_REALISTIC_STRENGTH)")]
     public float strength = 1f;
     [Tooltip("Rooster tail + chine spray (Python: WAKE_REALISTIC_SPRAY).")]
     public bool sprayEnabled = true;
-    public float sprayStartAlpha = 0.7f;
-    public float dropletSizeBeams = 0.18f;    // streak width, in beams
-    public float roosterUpFraction = 0.3f;    // max vertical launch speed / boat speed
-    public float sprayPerMetre = 14f;         // droplets per metre travelled at full planing
+    public float sprayStartAlpha = 0.85f;
+    public float dropletSizeBeams = 0.28f;    // streak width, in beams
+    public float roosterUpFraction = 0.32f;    // max vertical launch speed / boat speed
+    public float sprayPerMetre = 140f;         // droplets per metre travelled at full planing
     public float sprayDrag = 0.4f;            // 1/s air drag on droplets
     public float maxLifetime = 1.6f;
 
@@ -126,17 +126,17 @@ public class BoatSternWake : MonoBehaviour
             float water = WaterHeight(c);
             float up;
 
-            // Two of three droplets feed the rooster tail, the rest the chine sheets.
-            if (Random.value < 0.67f)
+            // Broad, low chine sheets supply most of the aerated spray collar.
+            if (Random.value < 0.35f)
             {
                 // Jet off the transom: in the world frame it barely keeps up with the
                 // hull, so the plume trails astern while it rises and falls.
-                Vector3 p = c + right * (Random.Range(-0.15f, 0.15f) * hullBeam);
+                Vector3 p = c + right * (Random.Range(-0.35f, 0.35f) * hullBeam);
                 p.y = water + 0.1f;
                 up = speed * roosterUpFraction * planing * Random.Range(0.5f, 1f);
                 ep.position = p;
                 ep.velocity = Vector3.up * up
-                              + forward * (speed * Random.Range(0.1f, 0.35f))
+                              + forward * (speed * Random.Range(0.5f, 0.75f))
                               + right * (speed * Random.Range(-0.05f, 0.05f));
                 ep.startSize = size * Random.Range(0.7f, 1.3f);
             }
@@ -238,6 +238,7 @@ public class BoatSternWake : MonoBehaviour
         // A root object with identity transform: particles live in world space and
         // their sizes must not inherit the boat's scale.
         var go = new GameObject(systemName);
+        go.layer = gameObject.layer;
         var ps = go.AddComponent<ParticleSystem>();
         ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
 
@@ -246,7 +247,7 @@ public class BoatSternWake : MonoBehaviour
         main.playOnAwake = false;
         main.simulationSpace = ParticleSystemSimulationSpace.World;
         main.scalingMode = ParticleSystemScalingMode.Local;
-        main.maxParticles = 4000;
+        main.maxParticles = 8000;
         main.startSpeed = 0f;
         main.gravityModifier = 1f;
 
@@ -278,8 +279,8 @@ public class BoatSternWake : MonoBehaviour
         var renderer = go.GetComponent<ParticleSystemRenderer>();
         // Streaks along the droplet velocity read as flying water, not smoke.
         renderer.renderMode = ParticleSystemRenderMode.Stretch;
-        renderer.velocityScale = 0.06f;
-        renderer.lengthScale = 1.5f;
+        renderer.velocityScale = 0.025f;
+        renderer.lengthScale = 1.0f;
         renderer.sharedMaterial = mat;
         renderer.sortMode = ParticleSystemSortMode.Distance;
         renderer.maxParticleSize = 2f;
@@ -303,7 +304,8 @@ public class BoatSternWake : MonoBehaviour
         Shader shader = Shader.Find("Hidden/USV/FoamParticle");
         if (shader == null) shader = Shader.Find("Sprites/Default");
         sharedProceduralMaterial = new Material(shader) { name = "BoatSpray (procedural)" };
-        sharedProceduralMaterial.mainTexture = BuildDropletTexture(128);
+        Texture2D photographic=Resources.Load<Texture2D>("USVPhotographicSpray");
+        sharedProceduralMaterial.mainTexture = photographic!=null ? photographic : BuildDropletTexture(128);
         return sharedProceduralMaterial;
     }
 
@@ -348,7 +350,7 @@ public class BoatSternWake : MonoBehaviour
                 float v = (y + 0.5f) / size * 2f - 1f;
                 float fall = 1f - Mathf.SmoothStep(0.5f, 1f, Mathf.Sqrt(u * u + v * v));
                 // Faint mist between droplets.
-                float a = Mathf.Max(alpha[y * size + x], 0.12f * fall) * fall;
+                float a = Mathf.Max(alpha[y * size + x], 0.38f * fall) * fall;
                 pixels[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(255f * Mathf.Clamp01(a)));
             }
         }

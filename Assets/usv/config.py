@@ -91,7 +91,7 @@ YOLO_BATCH_WAIT_SEC = 0.008
 YOLO_ENABLE_WARMUP = True
 YOLO_ENABLE_TORCH_COMPILE = False
 ENABLE_WAKE_DETECTION = False
-ENABLE_KALMAN_FILTER = False
+ENABLE_KALMAN_FILTER = True
 # If False, side-camera detections/predictions are ignored by the controller.
 # Set this in `config.py` to disable side-camera usage at startup.
 ENABLE_SIDE_DETECTION = False
@@ -630,8 +630,8 @@ SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": -1.0}
 #   Typhoon B12 | 1.80  | 0.80  | 3.50 | 0.008 | 0.80 | 0.350 | 1.80
 # =========================================================
 # Ambient swells use USVOceanSurface: geometry, shading and buoyancy share
-# one world-space wave field. lgWaveHeight is its height budget in metres
-# (sum of component peak-to-trough heights; local waves are usually smaller).
+# one world-space wave field. lgWaveHeight is a nominal height scale in metres;
+# the directional mixture has spatial RMS displacement of about 0.20 times it.
 # Calm: 0.0; gentle default: 0.55; large-wave test: 2.0.
 # Camera motion comes from the hull's response to that same surface.
 WAVE_CONTROL_ENABLE          = True
@@ -643,10 +643,10 @@ WAVE_APPLY_AFTER_STARTUP     = True
 WAVE_CONTROL_PORT            = 5070       # must match WaveController.listenPort
 SUIMONO_WAVE_HEIGHT          = 0.50       # visual normal-map ripple (no physics); >0.65 causes YOLO glitter
 SUIMONO_TURBULENCE           = 0.12       # surface turbulence / glint intensity
-# Shared geometric swell height budget (metres). Increasing it affects both
+# Shared geometric swell height scale (metres). Increasing it affects both
 # the visible water and hull/camera response. Scale controls wavelengths:
 # increasing lgWaveScale shortens them; reducing it lengthens them.
-SUIMONO_LARGE_WAVE_HEIGHT    = 0.55       # swell height budget in metres
+SUIMONO_LARGE_WAVE_HEIGHT    = 0.55       # nominal swell height scale in metres
 SUIMONO_LARGE_WAVE_SCALE     = 0.040      # spatial frequency of large waves
 SUIMONO_WAVE_SCALE           = 0.45       # small-wave detail density
 SUIMONO_FLOW_SPEED           = 0.010      # surface current speed
@@ -711,11 +711,11 @@ WAKE_TARGET         = "all"  # "leader" = only the tracked boat's wake; "all" = 
 #     - turbulent stern wash and breaking crests appear as foam on the water;
 #     - every boat crossing the waves heaves (buoyancy) and pitches/rolls
 #       (HullWaveResponse), so boat-mounted cameras shake;
-#     - spray: rooster tail off the transom (~1-1.5 m at cruise, height ∝
+#     - spray: rooster tail off the transom (roughly 1-1.7 m at cruise, height ∝
 #       speed²) and chine spray sheets, drawn as droplet streaks.  It appears
 #       once the hull planes (Fr > 1) and partially hides the leader's hull
 #       from the follower cameras -- the detection-robustness stress.
-#   Only WAKE_REALISTIC_STRENGTH / WAKE_REALISTIC_SPRAY apply; the
+#   Realistic wave, spray and foam controls apply; the
 #   intensity/anchor settings below are ignored.
 # "stress": the legacy fx_boatwake occlusion stress test configured by
 #   WAKE_INTENSITY / WAKE_OVERRIDES below.  Its camera-facing puffs stand up
@@ -723,11 +723,14 @@ WAKE_TARGET         = "all"  # "leader" = only the tracked boat's wake; "all" = 
 #   20261028_093228: area 2x the spawn value while the follower was actually
 #   farther than at spawn), which fakes "too close" and breaks the formation.
 WAKE_STYLE = "realistic"
-# Realistic-style intensity: 1.0 = realistic for this hull and speed.
+# Realistic-style intensity: 1.0 = baseline for this hull and speed.
 # Raise it for a harsher robustness test (2.0 ≈ twice the wave height and a
 # denser, larger, more opaque spray plume); 0.5 = light.  Scales stern-wave
 # height and spray density/size/opacity together.
-WAKE_REALISTIC_STRENGTH = 3.0
+WAKE_REALISTIC_STRENGTH = 1.15
+# White-water coverage only: increase to 1.5 or 2.0 for a fuller wake without
+# increasing wave displacement or hull/camera motion.
+WAKE_REALISTIC_FOAM_STRENGTH = 2.0
 # False = stern waves and foam only (no rooster tail / chine spray) -- a
 # clean A/B against the spray's occlusion effect.
 WAKE_REALISTIC_SPRAY = True

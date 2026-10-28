@@ -1,0 +1,28 @@
+{
+  "straight": {
+    "completed": true,
+    "max_wake_error_m": 0.000274,
+    "max_swell_error": 7.6e-06,
+    "spray_changed_pixels": 1527,
+    "spray_bounds": [
+      427,
+      374,
+      650,
+      409
+    ],
+    "max_particle_height_m": 1.326
+  },
+  "turn": {
+    "completed": true,
+    "max_wake_error_m": 0.000241,
+    "max_swell_error": 3.8e-06,
+    "spray_changed_pixels": 2370,
+    "spray_bounds": [
+      368,
+      380,
+      651,
+      412
+    ],
+    "max_particle_height_m": 1.524
+  }
+}

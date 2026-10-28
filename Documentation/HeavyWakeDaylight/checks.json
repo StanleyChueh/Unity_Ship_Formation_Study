@@ -1,0 +1,18 @@
+{
+  "straight": {
+    "completed": true,
+    "runtime_errors": [],
+    "max_wake_error_m": 0.000226,
+    "max_swell_error": 7.4e-06,
+    "max_particle_rise_m": 1.677,
+    "same_frame_spray_pixels_rgb_delta_gt_5": 4505
+  },
+  "turn": {
+    "completed": true,
+    "runtime_errors": [],
+    "max_wake_error_m": 0.000243,
+    "max_swell_error": 3.7e-06,
+    "max_particle_rise_m": 1.855,
+    "same_frame_spray_pixels_rgb_delta_gt_5": 7383
+  }
+}

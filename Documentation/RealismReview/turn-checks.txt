@@ -1,0 +1,31 @@
+[Validation] CPU/GPU 0_field_t5: samples=6889 max_error_m=0.000218 mean_error_m=0.000000
+[OceanValidation] 0_field_t5 height_and_slope_max_error=0.0000027
+[SprayCheck] BoatSpray_Leader particles=498 max_above_water=0.608
+[SprayCheck] BoatSpray_Follower_Right particles=730 max_above_water=0.902
+[SprayCheck] BoatSpray_Follower_Left particles=774 max_above_water=0.795
+[Validation] CPU/GPU 1_field_t9: samples=6889 max_error_m=0.000227 mean_error_m=0.000001
+[OceanValidation] 1_field_t9 height_and_slope_max_error=0.0000038
+[SprayCheck] BoatSpray_Leader particles=1085 max_above_water=1.033
+[SprayCheck] BoatSpray_Follower_Right particles=939 max_above_water=0.847
+[SprayCheck] BoatSpray_Follower_Left particles=1319 max_above_water=1.327
+[Validation] CPU/GPU 2_field_t13: samples=6889 max_error_m=0.000200 mean_error_m=0.000002
+[OceanValidation] 2_field_t13 height_and_slope_max_error=0.0000035
+[SprayCheck] BoatSpray_Leader particles=1149 max_above_water=1.140
+[SprayCheck] BoatSpray_Follower_Right particles=988 max_above_water=0.966
+[SprayCheck] BoatSpray_Follower_Left particles=1424 max_above_water=1.122
+[Validation] CPU/GPU 3_field_t18: samples=6889 max_error_m=0.000193 mean_error_m=0.000002
+[OceanValidation] 3_field_t18 height_and_slope_max_error=0.0000030
+[SprayCheck] BoatSpray_Leader particles=1146 max_above_water=1.247
+[SprayCheck] BoatSpray_Follower_Right particles=991 max_above_water=0.777
+[SprayCheck] BoatSpray_Follower_Left particles=1404 max_above_water=1.233
+[Validation] CPU/GPU 4_field_t24: samples=6889 max_error_m=0.000234 mean_error_m=0.000002
+[OceanValidation] 4_field_t24 height_and_slope_max_error=0.0000022
+[SprayCheck] BoatSpray_Leader particles=1014 max_above_water=1.068
+[SprayCheck] BoatSpray_Follower_Right particles=847 max_above_water=0.990
+[SprayCheck] BoatSpray_Follower_Left particles=1279 max_above_water=1.524
+[Validation] CPU/GPU 5_field_t32: samples=6889 max_error_m=0.000241 mean_error_m=0.000002
+[OceanValidation] 5_field_t32 height_and_slope_max_error=0.0000021
+[SprayCheck] BoatSpray_Leader particles=1039 max_above_water=1.156
+[SprayCheck] BoatSpray_Follower_Right particles=866 max_above_water=0.975
+[SprayCheck] BoatSpray_Follower_Left particles=1314 max_above_water=1.388
+[Capture] done

@@ -1,0 +1,13 @@
+{
+  "Assets/BoatSternWake.cs": "e7932008bccdad700626e2e8a50f2d535e72bc4c612a9efee1315de179363b03",
+  "Assets/USVOceanSurface.cs": "5b5488bfabee2e3dd528c80bc14eae4f3d812a5c40e0b44e61d5add9c67c111d",
+  "Assets/USVWakeField.cs": "63441d700099bb7fefa7a17180b29ddaa1f20bad96a1bcf20ffe950c5c088063",
+  "Assets/USVDaylightPresentation.cs": "c50e2ee8007e1a77b3e103d92a70aea04e083b3c0021163cd28346ab83dbf9ca",
+  "Assets/WaveController.cs": "fa0d072604719eab16436d078e9580c52ad941b195a402c8403492b9a3dc8ca9",
+  "Assets/Resources/USVOceanSurface.cginc": "82360465e05936f1b1109110bcf31d368f012bdb630bdca154655ee3d49968f9",
+  "Assets/Resources/USVFoamParticle.shader": "1f5cdf4bb22f7e34e42bf952696339322625cd0a7f890b9668a4d47dfe42ab4c",
+  "Assets/Resources/USVWakeField.shader": "eb5fe6cffd85bbb7ce42ad056f54a0f6a2490b7515e48c0ae3f861f39059e0ea",
+  "Assets/Resources/USVSurfaceNoise.cginc": "f3d06ad18f0f95b6d8881dd8b28dfcaf948989d37efb2fccfff05d062c19388c",
+  "Assets/Resources/USVPhotographicSpray.png": "0aa314a2cf20cbc9de1ff67ff1604ebac31c53bbde4be93968bd90afac93f760",
+  "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoFunctionLibrary.cginc": "bcc743d33414c3363e0903a8d7e9bec8a1979b49a121bbbde1c431fe32d52ca1"
+}

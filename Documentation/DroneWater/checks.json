@@ -1,0 +1,12 @@
+{
+  "straight": {
+    "completed": true,
+    "max_wake_error_m": 0.000307,
+    "max_swell_error": 7.7e-06
+  },
+  "turn": {
+    "completed": true,
+    "max_wake_error_m": 0.000223,
+    "max_swell_error": 5.3e-06
+  }
+}

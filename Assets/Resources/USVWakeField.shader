@@ -1,6 +1,6 @@
 // Renders the world-space stern-wave field for USVWakeField.cs:
 //   R = water surface height from all boat wakes (m)
-//   G = wake foam coverage 0..1 (turbulent stern wash + whitecapping crests)
+//   G = wake foam coverage (turbulent stern wash + whitecapping crests)
 // The Kelvin height formula must stay identical to USVWakeField.KelvinHeight().
 Shader "Hidden/USV/WakeField"
 {
@@ -15,6 +15,7 @@ Shader "Hidden/USV/WakeField"
             #pragma fragment frag
             #pragma target 3.5
             #include "UnityCG.cginc"
+            #include "USVSurfaceNoise.cginc"
 
             #define MAX_BOATS 4
             #define TRACK_POINTS 96
@@ -25,6 +26,7 @@ Shader "Hidden/USV/WakeField"
             float4 _usvBoat[MAX_BOATS];                 // x = point count, y = speed U, z = hull length L, w = beam B
             float4 _usvBoatAmp[MAX_BOATS];              // x = amplitude A0
             int _usvBoatCount;
+            float _usvFoamStrength;
             float4 _usvWakeRect;                        // x0, z0, size, 1/size
 
             float HullFilter(float kL)
@@ -78,13 +80,20 @@ Shader "Hidden/USV/WakeField"
             {
                 if (s < -0.3 * L || U < 0.8) return 0.0;
                 // Turbulent white water starts at the transom about one beam wide,
-                // widens slowly and decays over ~2.5 s of travel (~45 m at cruise).
+                // grows into a broad aerated wash and decays over ~3 s of travel.
                 float sp = max(s - 0.5 * L, 0.0);
-                float w = B * 0.45 + 0.025 * sp;
-                float wash = exp(-(y * y) / (w * w)) * exp(-sp / (U * 1.8));
+                float w = B * 0.55 + 0.06 * sp;
+                float cross = y / max(w,0.1);
+                float age = sp / max(U,0.8);
+                float core = exp(-cross*cross*cross*cross) * exp(-age / 1.7);
+                // Older foam separates into two spreading streaks; it does not
+                // remain a uniformly filled triangular carpet.
+                float rim = (abs(y)-w*0.85) / max(B*0.22+sp*0.018,0.2);
+                float streaks = 0.60 * exp(-rim*rim) * exp(-age/6.0);
+                float wash = max(core,streaks);
                 // Whitecaps on the steep near-field divergent crests: thin lines along the V arms.
                 float caps = saturate((eta / max(A0, 1e-3) - 0.45) * 2.5) * exp(-max(s, 0.0) / (U * 1.8));
-                return saturate(max(wash, 0.8 * caps) * saturate((U - 0.8) / 4.0));
+                return saturate(max(wash, caps) * saturate((U - 0.8) / 4.0) * _usvFoamStrength);
             }
 
             float4 frag(v2f_img i) : SV_Target
@@ -138,7 +147,10 @@ Shader "Hidden/USV/WakeField"
 
                     float h = KelvinHeight(s, y, U, L, B, A0, trackLength);
                     eta += h;
-                    foam = max(foam, WashFoam(s, y, U, L, B, h, A0) * saturate((trackLength - s) / 20.0));
+                    float2 churn = p*0.16 + USVWarp(p*0.045)*2.5 + float2(_Time.y*0.018,0);
+                    float patches = lerp(0.70,1.10,smoothstep(0.18,0.82,USVFbm(churn)));
+                    float contribution = WashFoam(s, y, U, L, B, h, A0) * patches * saturate((trackLength - s) / 20.0);
+                    foam=max(foam,contribution);
                 }
                 return float4(eta, foam, 0, 0);
             }

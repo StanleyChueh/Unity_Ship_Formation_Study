@@ -79,6 +79,7 @@ from .config import (
     WAKE_INTENSITY,
     WAKE_STYLE,
     WAKE_REALISTIC_STRENGTH,
+    WAKE_REALISTIC_FOAM_STRENGTH,
     WAKE_REALISTIC_SPRAY,
     wake_params,
 )
@@ -1300,6 +1301,7 @@ def _send_wake_settings():
             "enable": 1 if WAKE_ENABLE else 0,
             "target": str(WAKE_TARGET),
             "strength": float(WAKE_REALISTIC_STRENGTH),
+            "foam_strength": float(WAKE_REALISTIC_FOAM_STRENGTH),
             "no_spray": 0 if WAKE_REALISTIC_SPRAY else 1,
         }
     else:
@@ -1318,7 +1320,7 @@ def _send_wake_settings():
             print(
                 f"[WakeCtrl] Sent realistic wake → port {WAVE_CONTROL_PORT}: "
                 f"target={WAKE_TARGET} enable={WAKE_ENABLE} strength={float(WAKE_REALISTIC_STRENGTH):.2f} "
-                f"spray={'on' if WAKE_REALISTIC_SPRAY else 'off'}"
+                f"foam={float(WAKE_REALISTIC_FOAM_STRENGTH):.2f} spray={'on' if WAKE_REALISTIC_SPRAY else 'off'}"
             )
             return
         print(

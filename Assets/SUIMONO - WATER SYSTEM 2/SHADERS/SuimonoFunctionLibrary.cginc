@@ -21,12 +21,16 @@
 	float usvWakeFoam;
 	UNITY_DECLARE_TEX2D(_NormalTexS);
 	UNITY_DECLARE_TEX2D_NOSAMPLER(_usvWakeTex);
+    UNITY_DECLARE_TEX2D_NOSAMPLER(_usvFoamPhoto);
+    float _usvFoamPhotoOn,usvFoamPhotoLum;
 	float4 _usvWakeRect;   // x0, z0, size, 1/size
 	float _usvWakeOn;
 
 	float4 USVNormalSampleLod(float4 uv){ return UNITY_SAMPLE_TEX2D_LOD(_NormalTexS, uv.xy, uv.w); }
 
     #include "../../Resources/USVOceanSurface.cginc"
+    #include "../../Resources/USVSurfaceNoise.cginc"
+    float usvWaterLight;
 
 	float2 USVWakeSample(float3 wpos){
 		if (_usvWakeOn < 0.5) return float2(0,0);
@@ -459,6 +463,7 @@
 		fresnel = saturate(max(fresnel,_reflecTerm+(1.0-_reflecTerm)*pow((1.0-NdotV),5)));
 		//sharpen reflection
 		fresnel = saturate(lerp((half)_reflecSharp, (half)1.0, fresnel));
+        if (_usvOceanOn>0.5) fresnel=0.0204+0.9796*pow(1.0-NdotV,5.0);
 
 		//--------------------------------------------
 		//##  NORMAL DISTRIBUTION FUNCTIONS (ggx)  ##
@@ -521,7 +526,14 @@
 		refTerm = refTerm * (fresnel*refFac);
 		refTerm = refTerm *lerp(lerp((half)0.1, (half)0.6, fresnel), (half)1.0, atten);
 		refTerm = refTerm * reflectMask;
-		col.rgb = lerp((fixed3)col.rgb, (fixed3)useReflectColor.rgb * (fixed3)_ReflectionColor.rgb * 0.5, refTerm*_ReflectionColor.a);
+        if (_usvOceanOn>0.5)
+            col.rgb=lerp(col.rgb,useReflectColor.rgb*_ReflectionColor.rgb,saturate(fresnel*_ReflectionColor.a));
+        else
+            col.rgb = lerp((fixed3)col.rgb, (fixed3)useReflectColor.rgb * (fixed3)_ReflectionColor.rgb * 0.5, refTerm*_ReflectionColor.a);
+
+        // Make actual wave faces readable from the drone camera as well as
+        // at grazing angles. Foam/specular are composed afterwards.
+        col.rgb *= 1.0 + usvWaterLight * 0.75;
 
 		//adjust wave height coloring based on beaufort model
 		col.rgb = lerp((fixed3)col.rgb, (fixed3)_shallowColor.rgb*(fixed3)outLight.rgb, saturate(lerp(-0.2,0.3,heightMask*(heightMaskRWave/10.0)))*0.1*saturate(lerp(-2.0,1.0,_beaufortScale)));
@@ -534,6 +546,22 @@
 		//add direct light casting
 		//col.rgb = saturate(col.rgb);
 
+        // Energy-normalized GGX water highlight. The legacy broad lobe below
+        // omitted Fresnel/geometry normalization and washed out daylight views.
+        if (_usvOceanOn>0.5){
+            float nl=saturate(dot(s.Normal,lightDir));
+            float nv=max(NdotV,0.001);
+            float vh=saturate(dot(viewDir,normalize(lightDir+viewDir)));
+            float rough=clamp(_roughness,0.10,0.7);
+            float alpha=rough*rough, a2=alpha*alpha;
+            float denominator=h*h*(a2-1.0)+1.0;
+            float distribution=a2/max(3.14159265*denominator*denominator,0.00001);
+            float k=(rough+1.0)*(rough+1.0)*0.125;
+            float geometry=(nv/(nv*(1.0-k)+k))*(nl/max(nl*(1.0-k)+k,0.001));
+            float reflectance=0.0204+0.9796*pow(1.0-vh,5.0);
+            float spec=distribution*geometry*reflectance/max(4.0*nv,0.004);
+            col.rgb+=spec*outLight.rgb*_specularPower*atten*(1.0-saturate(foamDepth));
+        } else {
 		//combine specular
 		if (suimono_trans_on == 1.0){
 			//rough
@@ -552,6 +580,7 @@
 			//bright
 			col.rgb = col.rgb + (((fixed3(ndf,ndf,ndf) * fixed3(h,h,h) * lerp(fixed3(1,1,1), fixed3(0.1,0.1,0.1), _roughness)) * atten) * outLight.rgb)*1.75;
 		}
+        }
 
 
 		//atten
@@ -581,6 +610,7 @@
 			half usvFoamWeight = saturate(usvWakeFoam / max(foamDepth,0.001));
             half usvLight = max(0.4, dot(outLight.rgb,half3(0.2126,0.7152,0.0722)));
             foam.rgb *= lerp(outLight.rgb, half3(usvLight,usvLight,usvLight), usvFoamWeight);
+            foam.rgb *= lerp(1.0,usvFoamPhotoLum,usvFoamWeight);
 
 			//Add foam to main Return
 			col.rgb = lerp((fixed3)col.rgb, (fixed3)foam.rgb, foamDepth * _FoamColor.a * (1.0-edgeDarkenDepth));
@@ -642,6 +672,7 @@ if (_sui_metalTestMode == 3){
 		fresnel = saturate(max(fresnel,_reflecTerm+(1.0-_reflecTerm)*pow((1.0-NdotV),5)));
 		//sharpen reflection
 		fresnel = saturate(lerp((half)_reflecSharp, (half)1.0, fresnel));
+        if (_usvOceanOn>0.5) fresnel=0.0204+0.9796*pow(1.0-NdotV,5.0);
 
 		//--------------------------------------------
 		//##  NORMAL DISTRIBUTION FUNCTIONS (ggx)  ##
@@ -728,14 +759,27 @@ if (_sui_metalTestMode == 3){
         float3 usvSlope = float3(-usvHx-ocean.y,0,-usvHz-ocean.z);
         float3 usvT = normalize(WorldNormalVector(IN, float3(1,0,0)));
         float3 usvB = normalize(WorldNormalVector(IN, float3(0,1,0)));
-        o.Normal = normalize(o.Normal);
+        float3 usvBaseN=normalize(WorldNormalVector(IN,float3(0,0,1)));
+        float3 usvWorldNormal;
         if (_usvOceanOn > 0.5){
-            // Keep sub-hull ripples subordinate to the actual geometric slopes.
-            o.Normal.xy *= 0.12 * _usvOceanDetail;
-            o.Normal = normalize(o.Normal);
+            // Small capillary detail in world space; the broad slope is the
+            // exact shared swell/wake slope, independent of mesh tangent seams.
+            float footprint=max(length(ddx(IN.worldPos.xz)),length(ddy(IN.worldPos.xz)));
+            float2 micro=USVOceanMicroSlope(IN.worldPos.xz,footprint);
+            float2 filtered=USVOceanFilteredSlope(IN.worldPos.xz,footprint);
+            float wakeFade=1.0-smoothstep(0.5,2.0,footprint);
+            float2 slope=filtered+float2(usvHx,usvHz)*wakeFade;
+            usvWorldNormal=normalize(float3(-slope.x+micro.x,1,-slope.y+micro.y));
+            usvWorldNormal*=usvBaseN.y<0 ? -1.0 : 1.0;
+            o.Normal=normalize(float3(dot(usvWorldNormal,usvT),dot(usvWorldNormal,usvB),dot(usvWorldNormal,usvBaseN)));
+        } else {
+            o.Normal=normalize(o.Normal);
+            o.Normal.xy+=float2(dot(usvSlope,usvT),dot(usvSlope,usvB))*abs(o.Normal.z);
+            o.Normal=normalize(o.Normal);
+            usvWorldNormal=normalize(WorldNormalVector(IN,o.Normal));
         }
-        o.Normal.xy += float2(dot(usvSlope,usvT), dot(usvSlope,usvB)) * abs(o.Normal.z);
-        o.Normal = normalize(o.Normal);
+        float3 usvLightDir=normalize(_WorldSpaceLightPos0.xyz+float3(0,0.0001,0));
+        usvWaterLight=clamp(dot(usvWorldNormal,usvLightDir)-usvLightDir.y,-0.35,0.35)*_usvOceanOn;
 
 		//get distorted screen Textures --------------------------------------------------------------------------------------------
 		float4 uv1 = IN.screenPos;
@@ -996,10 +1040,34 @@ if (_enableFoam == 0){
 	foamDepth = 0;
 }
 
-        // Two moving foam scales leave open water between turbulent streaks.
+        // Domain-warped, non-periodic world-space foam at three scales.
+        // Filter the finest scale out as pixels cover more water from above.
         half usvFoam = saturate(usvSurface.g);
-        half usvCover = smoothstep(0.55, 0.85, foamTex.r * 0.55 + foamTex.b * 0.45 + usvFoam * 0.15);
-        usvWakeFoam = usvCover * usvFoam * 0.8;
+        float2 foamWorld = IN.worldPos.xz + float2(_Time.y*0.08,_Time.y*0.03);
+        // World-space detail avoids discontinuities from half-float track
+        // coordinates. Directional streak geometry comes from the wake field.
+        float2 foamWarp=foamWorld*1.1+USVWarp(foamWorld*0.23)*0.8;
+        float footprint=max(length(ddx(foamWorld)),length(ddy(foamWorld)));
+        float uvWidth=footprint*1.5;
+        half usvMacro=USVFbmFiltered(foamWarp,uvWidth);
+        half usvFine=lerp(USVNoise(foamWorld*7.3),0.5,saturate(footprint*7.3));
+        half usvCover = smoothstep(0.42-usvFoam*0.08,0.75-usvFoam*0.10,usvMacro*0.82+usvFine*0.18);
+        // Fresh aerated wash is connected white water, not a field of
+        // identical holes. Aged foam still separates into broken streaks.
+        usvCover=lerp(usvCover,0.60+0.40*usvMacro,smoothstep(0.5,0.95,usvFoam));
+        half bubbleGrain=lerp(USVNoise(foamWorld*17.3),0.5,smoothstep(0.3,0.9,footprint*17.3));
+        usvWakeFoam = usvCover * pow(usvFoam,0.85) * (0.7+0.3*bubbleGrain);
+        usvFoamPhotoLum=1.0;
+        if (_usvFoamPhotoOn>0.5 && usvFoam>0.01){
+            float2 puv=foamWorld*0.47+USVWarp(foamWorld*0.15)*0.25;
+            half4 pa=UNITY_SAMPLE_TEX2D_SAMPLER(_usvFoamPhoto,_NormalTexS,puv);
+            half4 pb=UNITY_SAMPLE_TEX2D_SAMPLER(_usvFoamPhoto,_NormalTexS,float2(puv.x*0.8-puv.y*0.6,puv.x*0.6+puv.y*0.8)*1.37+17.3);
+            half4 pc=UNITY_SAMPLE_TEX2D_SAMPLER(_usvFoamPhoto,_NormalTexS,float2(-puv.y,puv.x)*0.83+31.7);
+            half coverage=pa.a*0.4+pb.a*0.35+pc.a*0.25;
+            half3 detail=pa.rgb*pa.a*0.4+pb.rgb*pb.a*0.35+pc.rgb*pc.a*0.25;
+            usvFoamPhotoLum=0.7+0.3*saturate(dot(detail,half3(0.2126,0.7152,0.0722))/max(coverage,0.01));
+            usvWakeFoam*=0.65+0.35*coverage;
+        }
         foamDepth = saturate(foamDepth + usvWakeFoam);
 
 

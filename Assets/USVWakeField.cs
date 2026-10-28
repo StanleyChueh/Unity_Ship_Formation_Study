@@ -43,6 +43,8 @@ public class USVWakeField : MonoBehaviour
     public float amplitudePerLength = 0.08f;
     [Tooltip("Global multiplier (Python: WAKE_REALISTIC_STRENGTH).")]
     public float strength = 1f;
+    [Tooltip("Surface white-water coverage; independent of physical wave height.")]
+    public float foamStrength = 1f;
     public int textureSize = 640;
     public float textureWorldSize = 320f;
 
@@ -228,6 +230,7 @@ public class USVWakeField : MonoBehaviour
             }
         }
 
+        fieldMaterial.SetFloat("_usvFoamStrength", Mathf.Max(0f, foamStrength));
         fieldMaterial.SetVectorArray(TrackId, trackArray);
         fieldMaterial.SetVectorArray(BoatId, boatArray);
         fieldMaterial.SetVectorArray(AmpId, ampArray);

@@ -1,0 +1,4 @@
+[WakeCtrl] Sent realistic wake → port 46103: target=all enable=True strength=1.00 foam=1.50 spray=on
+[Metrics-Final] elapsed=  33.4s
+[Metrics-Final] Left: leader=100.0% follower=  0.0% stale=  0.0% Δsteer=0.000 Δthr=0.007 predMAE=0.003 flips=  53
+[Metrics-Final] Right: leader=100.0% follower=  0.0% stale=  0.0% Δsteer=0.001 Δthr=0.011 predMAE=0.003 flips=  36

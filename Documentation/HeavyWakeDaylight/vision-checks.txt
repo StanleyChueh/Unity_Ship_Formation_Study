@@ -1,0 +1,8 @@
+[Formation-Right] Locked front camera ref: offset=0.000 target_area=2117 (scale=1.00, class=leader) (observed offset=0.006)
+[Formation-Left] Locked front camera ref: offset=0.000 target_area=2030 (scale=1.00, class=leader) (observed offset=0.003)
+[WaveCtrl] Sent wave settings → port 46103: height=0.5 turb=0.12 lgH=0.55 tilt=0.5
+[WakeCtrl] Sent realistic wake → port 46103: target=all enable=True strength=1.15 foam=2.00 spray=on
+[StartupSync] Leader at 1.56 m/s; releasing synchronized follower control.
+[Metrics-Final] elapsed=  33.7s
+[Metrics-Final] Left: leader=100.0% follower=  0.0% stale= 10.1% Δsteer=0.001 Δthr=0.022 predMAE=0.003 flips=  47
+[Metrics-Final] Right: leader=100.0% follower=  0.0% stale=  4.1% Δsteer=0.001 Δthr=0.013 predMAE=0.003 flips=  35

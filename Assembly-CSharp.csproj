@@ -77,6 +77,7 @@
     <Compile Include="Assets/IgniteCoders/Simple Water Shader/Resources/WaterReflection.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/utility_SaveMesh.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/SuimonoModuleLib.cs" />
+    <Compile Include="Assets/USVDaylightPresentation.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_ControllerBoat.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/SuimonoCamera_depth.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/fx_EffectTrail.cs" />
@@ -120,6 +121,7 @@
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_WakeMask.shader" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/RESOURCES/SUIMONO_PRESETS_Built-In Presets/SUIMONO_PRESET_Deep Dark Ocean.txt" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_Fog.shader" />
+    <None Include="Assets/Resources/USVSurfaceNoise.cginc" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoFunctionLibrary.cginc" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/_Suimono2.1_ReadMe.txt" />
     <None Include="Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_depthmask.shader" />

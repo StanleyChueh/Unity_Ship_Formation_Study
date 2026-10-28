@@ -1,0 +1,32 @@
+[USVDaylight] Neutral daylight and softer water reflections enabled.
+[Validation] CPU/GPU 0_field_t5: samples=6889 max_error_m=0.000216 mean_error_m=0.000000
+[OceanValidation] 0_field_t5 height_and_slope_max_error=0.0000025
+[SprayCheck] BoatSpray_Leader particles=910 max_above_water=0.653
+[SprayCheck] BoatSpray_Follower_Right particles=1385 max_above_water=1.006
+[SprayCheck] BoatSpray_Follower_Left particles=1449 max_above_water=1.170
+[Validation] CPU/GPU 1_field_t9: samples=6889 max_error_m=0.000194 mean_error_m=0.000001
+[OceanValidation] 1_field_t9 height_and_slope_max_error=0.0000033
+[SprayCheck] BoatSpray_Leader particles=2014 max_above_water=1.028
+[SprayCheck] BoatSpray_Follower_Right particles=1797 max_above_water=1.008
+[SprayCheck] BoatSpray_Follower_Left particles=2496 max_above_water=1.632
+[Validation] CPU/GPU 2_field_t13: samples=6889 max_error_m=0.000243 mean_error_m=0.000002
+[OceanValidation] 2_field_t13 height_and_slope_max_error=0.0000036
+[SprayCheck] BoatSpray_Leader particles=2277 max_above_water=1.162
+[SprayCheck] BoatSpray_Follower_Right particles=1970 max_above_water=1.136
+[SprayCheck] BoatSpray_Follower_Left particles=2861 max_above_water=1.689
+[Validation] CPU/GPU 3_field_t18: samples=6889 max_error_m=0.000192 mean_error_m=0.000002
+[OceanValidation] 3_field_t18 height_and_slope_max_error=0.0000037
+[SprayCheck] BoatSpray_Leader particles=2212 max_above_water=1.379
+[SprayCheck] BoatSpray_Follower_Right particles=1880 max_above_water=0.852
+[SprayCheck] BoatSpray_Follower_Left particles=2750 max_above_water=1.438
+[Validation] CPU/GPU 4_field_t24: samples=6889 max_error_m=0.000119 mean_error_m=0.000002
+[OceanValidation] 4_field_t24 height_and_slope_max_error=0.0000023
+[SprayCheck] BoatSpray_Leader particles=1927 max_above_water=1.183
+[SprayCheck] BoatSpray_Follower_Right particles=1642 max_above_water=1.079
+[SprayCheck] BoatSpray_Follower_Left particles=2431 max_above_water=1.597
+[Validation] CPU/GPU 5_field_t32: samples=6889 max_error_m=0.000118 mean_error_m=0.000002
+[OceanValidation] 5_field_t32 height_and_slope_max_error=0.0000020
+[SprayCheck] BoatSpray_Leader particles=1928 max_above_water=1.257
+[SprayCheck] BoatSpray_Follower_Right particles=1647 max_above_water=1.205
+[SprayCheck] BoatSpray_Follower_Left particles=2424 max_above_water=1.855
+[Capture] done

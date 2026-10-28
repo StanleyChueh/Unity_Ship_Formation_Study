@@ -35,6 +35,9 @@ public class WaveController : MonoBehaviour
     [Tooltip("Optional spray material for BoatSternWake; a procedural droplet material is used when empty.")]
     public Material wakeSprayMaterial;
 
+    [Header("Daylight presentation")]
+    public bool useDaylightPresentation = true;
+
     private SuimonoModule suimonoModule;
     private CameraWaveTilt[] cameraWaveTilts;
     private UdpClient udpClient;
@@ -60,6 +63,7 @@ public class WaveController : MonoBehaviour
         public string cmd;
         public string style;            // "realistic" (BoatSternWake) or "stress" (legacy fx_boatwake)
         public float strength;          // realistic style: wave height + spray multiplier, 1 = realistic, 2 ≈ heavy (<= 0 means 1)
+        public float foam_strength;     // independent white-water coverage; omitted/0 defaults to 1
         public int no_spray;            // realistic style: 1 = foam only, no rooster tail / chine spray
         public int enable;              // 0 = stop wake emission entirely
         public string target;           // "leader" (default) or "all"
@@ -86,6 +90,7 @@ public class WaveController : MonoBehaviour
 
     void Start()
     {
+        if (useDaylightPresentation && GetComponent<USVDaylightPresentation>() == null) gameObject.AddComponent<USVDaylightPresentation>();
         if (GetComponent<USVOceanSurface>() == null) gameObject.AddComponent<USVOceanSurface>();
         suimonoModule = FindObjectOfType<SuimonoModule>();
         cameraWaveTilts = FindObjectsOfType<CameraWaveTilt>();
@@ -237,6 +242,8 @@ public class WaveController : MonoBehaviour
             {
                 float strength = cmd.strength > 0f ? cmd.strength : 1f;
                 SetRealisticWake(cmd.enable != 0, leaderOnly, strength, cmd.no_spray == 0);
+                USVWakeField wakeField = GetComponent<USVWakeField>();
+                if (wakeField != null) wakeField.foamStrength = cmd.foam_strength > 0f ? cmd.foam_strength : 1f;
                 Debug.Log($"[WaveController] Realistic wake [{(leaderOnly ? "leader" : "all")}]: enable={cmd.enable} strength={strength:F2} spray={(cmd.no_spray == 0 ? "on" : "off")}");
                 return;
             }
