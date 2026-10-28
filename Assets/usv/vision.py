@@ -154,6 +154,20 @@ def lock_visual_reference(boat_side, role, center_offset, area, target_kind=None
     if formation_ref.get(init_key, False):
         return
 
+    # The front reference sets the formation distance for the whole run, so
+    # lock it from the median of several frames of the (stationary) leader.
+    # A single first detection is often a partial box -- run 20261028_093228
+    # locked 981 px while the next frames measured ~1300, skewing the target
+    # distance by ~15% before the boats even moved.
+    if role == "front":
+        samples = formation_ref.setdefault("front_lock_samples", [])
+        samples.append((float(area), float(center_offset)))
+        needed = max(1, int(FORMATION_LOCK_SAMPLES))
+        if len(samples) < needed:
+            return
+        area = float(np.median([s[0] for s in samples]))
+        center_offset = float(np.median([s[1] for s in samples]))
+
     formation_ref[offset_key] = target_offset
     formation_ref[area_key] = get_scaled_reference_area(area)
     formation_ref[kind_key] = target_kind
@@ -898,6 +912,8 @@ def cv_processing_thread():
                 depth_preview = None
                 best_follower_score = -1.0
                 best_side_leader_score = -1.0
+                sim_loss_forced = False
+                sim_loss_remaining = 0.0
 
                 if result is not None and result.boxes is not None:
                     for box in result.boxes:
@@ -1147,6 +1163,36 @@ def cv_processing_thread():
                                 target_kind="follower",
                             )
 
+                    # Anchored to the startup-sync release, not to Python start: the
+                    # operator presses Play at an arbitrary moment, so a Python-start
+                    # anchor gives every run a different loss timeline and can land
+                    # a blind window on the formation's startup transient.
+                    _sim_released_at = runtime_settings.get("startup_sync_released_at")
+                    if SIMULATED_BBOX_LOSS_ENABLE and role == "front" and best_box is not None and _sim_released_at:
+                        _sim_sides = str(SIMULATED_BBOX_LOSS_SIDES).strip().lower()
+                        _sim_elapsed = current_time - float(_sim_released_at) - max(0.0, float(SIMULATED_BBOX_LOSS_START_DELAY_SEC))
+                        if _sim_sides in ("both", boat_side.lower()) and _sim_elapsed >= 0.0:
+                            _sim_interval = max(1e-3, float(SIMULATED_BBOX_LOSS_INTERVAL_SEC))
+                            _sim_duration = max(0.0, float(SIMULATED_BBOX_LOSS_DURATION_SEC))
+                            _sim_phase = _sim_elapsed % _sim_interval
+                            if _sim_phase < _sim_duration:
+                                # Deterministically forced "loss" this frame: fall through to
+                                # the same lost/coast handling as a real missed detection, and
+                                # also scrub it from the debug overlay (below) so the camera
+                                # window visually matches -- otherwise the raw YOLO box/label
+                                # would still be drawn even though tracking treats it as lost.
+                                sim_loss_forced = True
+                                sim_loss_remaining = _sim_duration - _sim_phase
+                                best_box = None
+                                best_area = 0.0
+                                detection_method = None
+                                target_kind = None
+                                center_offset = 0.0
+                                center_point = None
+                                yolo_display_detections = []
+                                wake_target = None
+                                wake_mask = None
+
                     if best_box is not None:
                         if role == "front" and detection_method in ("YOLO", "FUSED"):
                             lock_visual_reference(boat_side, "front", center_offset, best_area, target_kind=target_kind)
@@ -1337,6 +1383,17 @@ def cv_processing_thread():
                         if prev_state.get("last_known_method") is not None and time_since_seen <= TRACK_HOLD_SEC:
                             hold_text = f"HOLD {prev_state['last_known_method']} {time_since_seen:.2f}s"
                             cv2.putText(display_frame, hold_text, (16, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
+
+                    if sim_loss_forced:
+                        cv2.putText(
+                            display_frame,
+                            f"SIMULATED BBOX LOSS - {sim_loss_remaining:.1f}s left",
+                            (16, 90),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (0, 0, 255),
+                            2,
+                        )
 
                     if wake_mask is not None:
                         mask_small = cv2.resize(wake_mask, (0, 0), fx=WAKE_MASK_PREVIEW_SCALE, fy=WAKE_MASK_PREVIEW_SCALE)

@@ -15,7 +15,11 @@ using Suimono.Core;
 ///                "large_wave_height":X,"large_wave_scale":X,
 ///                "wave_scale":X,"flow_speed":X,"camera_tilt_strength":X}
 ///
-/// and:          {"cmd":"set_wake","enable":1,"target":"leader",
+/// and:          {"cmd":"set_wake","style":"realistic","enable":1,"target":"all",
+///                "strength":X,"no_spray":0}
+///
+/// or the legacy occlusion stress test:
+///               {"cmd":"set_wake","style":"stress","enable":1,"target":"leader",
 ///                "rate_over_time":X,"rate_over_distance":X,"lifetime":X,
 ///                "start_size_min":X,"start_size_max":X,"size_growth":X,
 ///                "alpha":X,"lift":X,"width":X,"max_particles":N}
@@ -24,6 +28,12 @@ public class WaveController : MonoBehaviour
 {
     [Header("UDP 接收埠 (需與 config.py WAVE_CONTROL_PORT 一致)")]
     public int listenPort = 5070;
+
+    [Header("Stern wake")]
+    [Tooltip("Install BoatSternWake on every boat at startup (flat foam wash + Kelvin V) instead of the legacy fx_boatwake puffs.")]
+    public bool useRealisticWake = true;
+    [Tooltip("Optional foam material for BoatSternWake; a procedural foam material is used when empty.")]
+    public Material wakeFoamMaterial;
 
     private SuimonoModule suimonoModule;
     private CameraWaveTilt[] cameraWaveTilts;
@@ -48,6 +58,9 @@ public class WaveController : MonoBehaviour
     private class WakeCmd
     {
         public string cmd;
+        public string style;            // "realistic" (BoatSternWake) or "stress" (legacy fx_boatwake)
+        public float strength;          // realistic style: 1 = realistic, 2 ≈ heavy (<= 0 means 1)
+        public int no_spray;            // realistic style: 1 = foam only, no rooster tail / chine spray
         public int enable;              // 0 = stop wake emission entirely
         public string target;           // "leader" (default) or "all"
         public float rate_over_time;    // particles per second
@@ -69,6 +82,7 @@ public class WaveController : MonoBehaviour
     // Resolved once on first set_wake, then reused.
     private List<ParticleSystem> leaderWakes;
     private List<ParticleSystem> allWakes;
+    private Transform leaderTransform;
 
     void Start()
     {
@@ -92,6 +106,11 @@ public class WaveController : MonoBehaviour
         {
             Debug.LogError($"[WaveController] Failed to bind UDP port {listenPort}: {e.Message}");
         }
+
+        // Realistic wake is the default so the scene looks right even when
+        // Python never sends a set_wake command.
+        if (useRealisticWake)
+            SetRealisticWake(true, false, 1f, true);
     }
 
     void Update()
@@ -186,6 +205,7 @@ public class WaveController : MonoBehaviour
             if (go != null) leader = go.transform;
         }
 
+        leaderTransform = leader;
         if (leader != null)
         {
             foreach (ParticleSystem ps in allWakes)
@@ -208,6 +228,21 @@ public class WaveController : MonoBehaviour
             if (allWakes == null || allWakes.Count == 0) ResolveWakeSystems();
 
             bool leaderOnly = string.IsNullOrEmpty(cmd.target) || cmd.target.ToLowerInvariant() != "all";
+
+            string style = string.IsNullOrEmpty(cmd.style)
+                ? (useRealisticWake ? "realistic" : "stress")
+                : cmd.style.ToLowerInvariant();
+            if (style == "realistic")
+            {
+                float strength = cmd.strength > 0f ? cmd.strength : 1f;
+                SetRealisticWake(cmd.enable != 0, leaderOnly, strength, cmd.no_spray == 0);
+                Debug.Log($"[WaveController] Realistic wake [{(leaderOnly ? "leader" : "all")}]: enable={cmd.enable} strength={strength:F2} spray={(cmd.no_spray == 0 ? "on" : "off")}");
+                return;
+            }
+
+            // Legacy stress-test wake: the two styles must never stack.
+            SetRealisticWake(false, false, 1f, true);
+
             List<ParticleSystem> targets = leaderOnly ? leaderWakes : allWakes;
             if (targets == null || targets.Count == 0)
             {
@@ -239,6 +274,54 @@ public class WaveController : MonoBehaviour
         catch (System.Exception e)
         {
             Debug.LogWarning($"[WaveController] Wake command failed, run continues unaffected: {e}");
+        }
+    }
+
+    /// <summary>
+    /// Turns BoatSternWake on/off per boat (adding it on first use) and keeps
+    /// the legacy fx_boatwake emitters silent while it is in charge.
+    /// </summary>
+    void SetRealisticWake(bool enable, bool leaderOnly, float strength, bool spray)
+    {
+        try
+        {
+            if (allWakes == null) ResolveWakeSystems();
+
+            if (enable)
+            {
+                foreach (ParticleSystem ps in allWakes)
+                {
+                    if (ps == null) continue;
+                    ParticleSystem.EmissionModule emission = ps.emission;
+                    emission.enabled = false;
+                }
+            }
+
+            int count = 0;
+            foreach (ShipUDPInterface boat in FindObjectsOfType<ShipUDPInterface>())
+            {
+                bool isLeader = leaderTransform != null && boat.transform == leaderTransform;
+                bool want = enable && (!leaderOnly || isLeader);
+
+                BoatSternWake wake = boat.GetComponent<BoatSternWake>();
+                if (wake == null)
+                {
+                    if (!want) continue;
+                    wake = boat.gameObject.AddComponent<BoatSternWake>();
+                }
+                if (wakeFoamMaterial != null) wake.foamMaterial = wakeFoamMaterial;
+                wake.strength = strength;
+                wake.sprayEnabled = spray;
+                wake.enabled = want;
+                if (want) count++;
+            }
+
+            if (enable)
+                Debug.Log($"[WaveController] Realistic stern wake active on {count} boat(s); legacy fx_boatwake emitters silenced.");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[WaveController] Realistic wake setup failed, run continues unaffected: {e}");
         }
     }
 

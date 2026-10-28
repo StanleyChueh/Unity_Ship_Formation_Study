@@ -57,6 +57,8 @@ from .config import (
     SYNC_FOLLOWER_STARTUP_REQUIRE_FRONT_VISUAL_LOCK,
     SYNC_FOLLOWER_STARTUP_REQUIRE_SIDE_VISUAL_LOCK,
     SYNC_FOLLOWER_STARTUP_SETTLE_SEC,
+    SYNC_FOLLOWER_RELEASE_LEADER_SPEED,
+    SYNC_LEADER_MOVE_TIMEOUT_SEC,
     SYNC_FOLLOWER_STARTUP_TIMEOUT_SEC,
     SYNC_FOLLOWER_STARTUP_PACKET_STALE_SEC,
     NEAR_MISS_DISTANCE_THRESHOLD_PX,
@@ -75,6 +77,9 @@ from .config import (
     WAKE_ENABLE,
     WAKE_TARGET,
     WAKE_INTENSITY,
+    WAKE_STYLE,
+    WAKE_REALISTIC_STRENGTH,
+    WAKE_REALISTIC_SPRAY,
     wake_params,
 )
 from .control import process_boat_vision_based
@@ -1287,16 +1292,35 @@ def _send_wake_settings():
     """Send leader stern-wake particle settings to Unity's WaveController via UDP."""
     if not WAKE_CONTROL_ENABLE:
         return
-    params = wake_params()
-    cmd = {
-        "cmd": "set_wake",
-        "enable": 1 if WAKE_ENABLE else 0,
-        "target": str(WAKE_TARGET),
-        **params,
-    }
+    style = str(WAKE_STYLE).strip().lower()
+    if style == "realistic":
+        cmd = {
+            "cmd": "set_wake",
+            "style": "realistic",
+            "enable": 1 if WAKE_ENABLE else 0,
+            "target": str(WAKE_TARGET),
+            "strength": float(WAKE_REALISTIC_STRENGTH),
+            "no_spray": 0 if WAKE_REALISTIC_SPRAY else 1,
+        }
+    else:
+        params = wake_params()
+        cmd = {
+            "cmd": "set_wake",
+            "style": "stress",
+            "enable": 1 if WAKE_ENABLE else 0,
+            "target": str(WAKE_TARGET),
+            **params,
+        }
     send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         send_sock.sendto(json.dumps(cmd).encode("utf-8"), (UDP_IP, int(WAVE_CONTROL_PORT)))
+        if style == "realistic":
+            print(
+                f"[WakeCtrl] Sent realistic wake → port {WAVE_CONTROL_PORT}: "
+                f"target={WAKE_TARGET} enable={WAKE_ENABLE} strength={float(WAKE_REALISTIC_STRENGTH):.2f} "
+                f"spray={'on' if WAKE_REALISTIC_SPRAY else 'off'}"
+            )
+            return
         print(
             f"[WakeCtrl] Sent wake settings → port {WAVE_CONTROL_PORT}: "
             f"target={WAKE_TARGET} enable={WAKE_ENABLE} intensity={WAKE_INTENSITY:.2f} "
@@ -1340,9 +1364,18 @@ def _wait_for_follower_connections(timeout_sec, poll_interval_sec):
 
 
 def _set_startup_sync_state(released, status, wait_reason=""):
+    if released and not runtime_settings.get("startup_sync_released_at"):
+        runtime_settings["startup_sync_released_at"] = time.time()
     runtime_settings["startup_sync_released"] = bool(released)
     runtime_settings["startup_sync_status"] = str(status)
     runtime_settings["startup_sync_wait_reason"] = str(wait_reason)
+
+
+def _observed_leader_speed():
+    """Leader planar speed (m/s) from the freshest follower state packet."""
+    with vision_lock:
+        speeds = [float(boat_comm_states.get(side, {}).get("leader_speed_mps", 0.0)) for side in ("Left", "Right")]
+    return max(speeds) if speeds else 0.0
 
 
 def _evaluate_startup_sync(now):
@@ -1359,12 +1392,14 @@ def _evaluate_startup_sync(now):
 
     # Hard deadline: fires if cameras never connect (broken setup).  This is
     # intentionally generous so it only triggers in truly broken scenarios.
+    # Fallbacks no longer release the followers on the spot: they start the
+    # leader and then go through the same "leader is moving" gate below, so
+    # the followers never set off ahead of it.
+    forced = runtime_settings.get("startup_sync_forced")
     hard_deadline = runtime_settings.get("startup_sync_hard_deadline")
-    if hard_deadline and now >= float(hard_deadline):
-        runtime_settings["startup_leader_cmd_triggered"] = True
-        _set_startup_sync_state(True, "hard_timeout", "startup hard deadline reached")
-        print("[StartupSync] Hard deadline reached; releasing follower control gate.")
-        return True
+    if not forced and hard_deadline and now >= float(hard_deadline):
+        forced = "hard_timeout"
+        print("[StartupSync] Hard deadline reached; starting leader without full checks.")
 
     missing = []
 
@@ -1388,11 +1423,11 @@ def _evaluate_startup_sync(now):
     # Per-camera-connect timeout: only fires after cameras have been connected.
     started_at = float(runtime_settings.get("startup_sync_started_at") or now)
     timeout_sec = max(0.0, float(SYNC_FOLLOWER_STARTUP_TIMEOUT_SEC))
-    if timeout_sec > 0.0 and (now - started_at) >= timeout_sec:
-        runtime_settings["startup_leader_cmd_triggered"] = True  # ensure leader starts on fallback
-        _set_startup_sync_state(True, "timeout_release", "startup sync timeout reached")
-        print("[StartupSync] Timeout reached; releasing follower control gate.")
-        return True
+    if not forced and timeout_sec > 0.0 and (now - started_at) >= timeout_sec:
+        forced = "timeout_release"
+        print("[StartupSync] Timeout reached; starting leader without full checks.")
+    if forced:
+        runtime_settings["startup_sync_forced"] = forced
 
     stale_limit = max(0.05, float(SYNC_FOLLOWER_STARTUP_PACKET_STALE_SEC))
     if bool(SYNC_FOLLOWER_STARTUP_REQUIRE_FOLLOWER_STATE):
@@ -1426,18 +1461,21 @@ def _evaluate_startup_sync(now):
         if side_missing:
             missing.append(f"side_lock:{','.join(side_missing)}")
 
-    if missing:
+    if missing and not forced:
         runtime_settings["startup_sync_ready_since"] = None
         _set_startup_sync_state(False, "waiting", " | ".join(missing))
         return False
 
     # All conditions are satisfied.  Signal the main loop to arm leader commands
     # NOW — before the settle delay — so the leader starts while followers are
-    # still gated.  The settle window then gives the leader time to start moving
-    # before followers are released, keeping relative positions consistent.
+    # still gated.  The followers are only released once the leader is
+    # actually seen moving (below), keeping relative positions consistent.
     if not runtime_settings.get("startup_leader_cmd_triggered", False):
         runtime_settings["startup_leader_cmd_triggered"] = True
-        print("[StartupSync] Front visual lock acquired; signaling leader to start.")
+        if forced:
+            print(f"[StartupSync] Fallback ({forced}, missing: {' | '.join(missing) or 'none'}); signaling leader to start.")
+        else:
+            print("[StartupSync] Front visual lock acquired; signaling leader to start.")
 
     ready_since = runtime_settings.get("startup_sync_ready_since")
     if ready_since is None:
@@ -1450,8 +1488,30 @@ def _evaluate_startup_sync(now):
         _set_startup_sync_state(False, "settling", f"settling:{remaining:.2f}s")
         return False
 
-    _set_startup_sync_state(True, "released", "startup sync released")
-    print("[StartupSync] All follower startup checks passed; releasing synchronized follower control.")
+    # Leader must be seen moving first (its speed, as reported in the follower
+    # state packets). A fixed delay is not enough: the command can be applied
+    # late, and the leader then sat still while the followers drove off.
+    leader_speed = _observed_leader_speed()
+    min_leader_speed = max(0.0, float(SYNC_FOLLOWER_RELEASE_LEADER_SPEED))
+    if leader_speed < min_leader_speed:
+        waited = now - float(ready_since)
+        move_timeout = max(0.0, float(SYNC_LEADER_MOVE_TIMEOUT_SEC))
+        if waited < move_timeout:
+            _set_startup_sync_state(
+                False, "settling", f"waiting for leader to move: {leader_speed:.2f}/{min_leader_speed:.2f} m/s"
+            )
+            return False
+        print(
+            f"[StartupSync] WARNING: leader still at {leader_speed:.2f} m/s after {waited:.1f}s; "
+            "releasing followers anyway."
+        )
+
+    status = str(forced) if forced else "released"
+    _set_startup_sync_state(True, status, "startup sync released")
+    print(
+        f"[StartupSync] Leader at {leader_speed:.2f} m/s; releasing synchronized follower control"
+        f"{f' ({forced})' if forced else ''}."
+    )
     return True
 
 
@@ -1558,6 +1618,17 @@ def main():
                 leader_cmd_retries_remaining = max(1, int(LEADER_STARTUP_CMD_RETRY_COUNT))
                 next_leader_cmd_time = loop_start
                 runtime_settings["startup_leader_cmd_armed"] = True
+
+            # Retries only cover a lost UDP packet; once the leader is seen
+            # moving the command evidently landed, so stop resending it.
+            if (
+                leader_cmd_retries_remaining > 0
+                and runtime_settings.get("startup_leader_cmd_armed", False)
+                and leader_cmd_retries_remaining < max(1, int(LEADER_STARTUP_CMD_RETRY_COUNT))
+                and _observed_leader_speed() >= float(SYNC_FOLLOWER_RELEASE_LEADER_SPEED)
+            ):
+                print("[LeaderCmd] Leader is moving; remaining startup command retries cancelled.")
+                leader_cmd_retries_remaining = 0
 
             if leader_cmd_retries_remaining > 0 and loop_start >= next_leader_cmd_time:
                 attempt = (max(1, int(LEADER_STARTUP_CMD_RETRY_COUNT)) - leader_cmd_retries_remaining) + 1

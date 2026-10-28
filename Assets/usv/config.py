@@ -96,6 +96,38 @@ ENABLE_KALMAN_FILTER = True
 # Set this in `config.py` to disable side-camera usage at startup.
 ENABLE_SIDE_DETECTION = False
 
+# ---------------------------------------------------------
+# Simulated / scheduled leader bbox loss (for controlled Kalman ON vs OFF
+# A/B experiments)
+# ---------------------------------------------------------
+# When True, the front camera's leader detection is periodically forced to
+# "lost" on a fixed schedule, overriding whatever YOLO actually saw that
+# frame. Real bbox loss (waves, occlusion, false negatives) is stochastic and
+# never lines up between two separate Unity runs, so comparing a Kalman ON
+# run against a Kalman OFF run is only a fair test of the filter if both see
+# bbox loss at the same times/durations -- otherwise one run can get
+# "lucky" with shorter or rarer dropouts than the other, purely by chance,
+# and the comparison mostly measures that instead of the filter. The
+# schedule below is anchored to the startup-sync release (the moment the
+# followers start moving), so every run gets the same loss timeline no
+# matter when Play was pressed.
+# Forcing best_box to None feeds the exact same coast/hold/BLIND_LOSS_CRUISE
+# code path used for a real bbox loss, so this exercises the real recovery
+# logic, not a separate mock.
+SIMULATED_BBOX_LOSS_ENABLE = False
+# Seconds from the start of one induced loss to the start of the next.
+# Must be greater than SIMULATED_BBOX_LOSS_DURATION_SEC below, otherwise the
+# leader would appear permanently lost instead of "once in a while".
+SIMULATED_BBOX_LOSS_INTERVAL_SEC = 10.0
+# How long each induced loss lasts.
+SIMULATED_BBOX_LOSS_DURATION_SEC = 5.0
+# Seconds after release before the first induced loss, so the schedule
+# starts once the formation has settled behind the accelerating leader
+# (its ramp to cruise speed takes ~6 s) instead of blinding it at launch.
+SIMULATED_BBOX_LOSS_START_DELAY_SEC = 15.0
+# Which follower(s) to apply the schedule to: "Left", "Right", or "Both".
+SIMULATED_BBOX_LOSS_SIDES = "Both"
+
 # Startup synchronization for repeatable experiments.
 # When enabled, both followers keep outputting zero command until startup
 # readiness conditions are met, reducing run-to-run timing drift.
@@ -105,6 +137,13 @@ SYNC_FOLLOWER_STARTUP_REQUIRE_FOLLOWER_STATE = True
 SYNC_FOLLOWER_STARTUP_REQUIRE_FRONT_VISUAL_LOCK = True
 SYNC_FOLLOWER_STARTUP_REQUIRE_SIDE_VISUAL_LOCK = False
 SYNC_FOLLOWER_STARTUP_SETTLE_SEC = 0.50
+# Followers are released only once the leader is measured moving at this
+# speed (m/s, from the leader_speed field of the follower state packets), so
+# the leader always moves first.  1.5 m/s is reached ~0.5 s into the 3 m/s^2
+# ramp and is well above hull bobbing.  If the leader still is not moving
+# after SYNC_LEADER_MOVE_TIMEOUT_SEC, followers are released with a warning.
+SYNC_FOLLOWER_RELEASE_LEADER_SPEED = 1.5
+SYNC_LEADER_MOVE_TIMEOUT_SEC = 8.0
 SYNC_FOLLOWER_STARTUP_TIMEOUT_SEC = 25.0
 SYNC_FOLLOWER_STARTUP_PACKET_STALE_SEC = 0.50
 
@@ -144,8 +183,12 @@ LEADER_INITIAL_CONTROL_MODE = "Trajectory"
 LEADER_TRAJECTORY_MODE = "Circle"
 LEADER_TRAJECTORY_SPEED = 18.0 #18.0
 LEADER_TRAJECTORY_SPEED_RAMP_ENABLE = True
-LEADER_TRAJECTORY_ACCELERATION = 6.0
-LEADER_TRAJECTORY_INITIAL_SPEED = 8.0
+# The leader is moved kinematically, so INITIAL_SPEED is an instantaneous
+# jump; 8.0 put it 8 m/s ahead of followers starting from rest.  Start from
+# rest and ramp at a boat-like 3 m/s^2 (0 → 18 m/s in 6 s) so the followers'
+# speed feedforward can track it from the first second.
+LEADER_TRAJECTORY_ACCELERATION = 3.0
+LEADER_TRAJECTORY_INITIAL_SPEED = 0.0
 LEADER_TRAJECTORY_CIRCLE_RADIUS = 360.0
 LEADER_TRAJECTORY_TRIANGLE_SIDE = 30.0
 LEADER_TRAJECTORY_RECT_SIZE = (36.0, 22.0)
@@ -161,11 +204,17 @@ FOLLOWER_THROTTLE_RAMP_DOWN_RATE = 1.2
 # 1.0 keeps the originally observed spacing.
 # Values > 1.0 make the commanded formation larger by targeting a smaller
 # apparent boat size in the cameras.
-# Empirically the followers lock onto the leader at ~60 m at startup while
-# the geometric target triangle has 30 m sides.  Setting 0.5 commands each
-# follower to converge to half the locked distance (desired_area = locked_area
-# / scale² = 4 × locked_area → follower moves to locked_d × scale = 30 m).
-FORMATION_SCALE_MULTIPLIER = 0.5  # targets 30 m from 60 m startup (comment above explains: scale=0.5 → 30 m)
+# The value 0.5 assumed a ~60 m spawn distance.  The scene now spawns the
+# followers 22 m astern and ±13 m abeam of the leader (~25.6 m), so 0.5
+# commanded a ~13 m triangle at release: full-throttle surge, then a hard
+# throttle cut when the box got 4x larger, and the leader ran away (run
+# 20261028_093228; world-coordinate spacing then settled at 26-35 m with the
+# followers pinned near max throttle, never reaching the target).  1.0 holds
+# the spawn triangle, so there is no step error at release.
+FORMATION_SCALE_MULTIPLIER = 1.0
+# Number of front-camera detections (of the stationary leader at spawn) whose
+# median becomes the formation reference.  Startup sync waits for it.
+FORMATION_LOCK_SAMPLES = 8
 # Retry leader startup command to avoid missing one-shot UDP when Unity enters
 # Play mode slightly later than Python start.
 # Total sends includes the first send (e.g. 5 means send immediately + 4 retries).
@@ -492,9 +541,31 @@ FOLLOW_BASE_THROTTLE = 0.40
 FOLLOW_MAX_THROTTLE = 0.68  # reduced from 0.75: prevents overshoot oscillation at target
 THROTTLE_SMOOTH_ALPHA = 0.40  # reduced from 0.40: slightly more EMA smoothing on throttle
 RIGHT_THROTTLE_SMOOTH_ALPHA = 0.40  # more smoothing for Right: damps throttle oscillation from S-twist
-# Leader-speed feedforward: at target distance, provides ~0.65 throttle to match leader's 18 m/s cruise,
+# Leader-speed feedforward: at target distance, cruise at the leader's speed,
 # preventing the deadzone → coast → fall behind → max-throttle chase bang-bang oscillation.
-LEADER_SPEED_THROTTLE_FF = 0.036
+# Measured follower steady state is ~23.4 m/s per unit throttle (run
+# 20261028_093228: 0.787 → 18.4 m/s, 0.729 → 17.2 m/s), i.e. 1/23.4 ≈ 0.043.
+# The old 0.036 under-drove by ~16%, so the area loop had to sit behind
+# target to make up the difference.
+LEADER_SPEED_THROTTLE_FF = 0.043
+# Acceleration lead: hulls reach a new speed with a ~0.5 s time constant
+# (mass 200, drag 2), so without this a follower trails by ~tau * V while the
+# leader ramps up.  accel is estimated from leader_speed and EMA-smoothed.
+LEADER_ACCEL_FF_TAU_SEC = 0.5
+LEADER_ACCEL_EMA_ALPHA = 0.3
+LEADER_ACCEL_FF_MAX = 4.0           # m/s^2 cap on the lead term
+# Extra throttle per unit of shaped "too far" area error on top of the
+# feedforward (0.25 → about +1.2 m/s closing speed at 1.2x target distance).
+LEADER_FF_CATCHUP_GAIN = 0.25
+# Throttle headroom above the feedforward so a follower on target can still
+# correct a small lag (FOLLOW_MAX_THROTTLE alone is below leader cruise).
+LEADER_FF_CEILING_MARGIN = 0.08
+# Too close: slow to a fraction of the leader's speed in proportion to the
+# overshoot instead of cutting throttle to zero.  Full slowdown is reached
+# when the area error ratio hits -TOO_CLOSE_FULL_SLOWDOWN_RATIO (area 1.6x
+# target ≈ 0.79x target distance).
+TOO_CLOSE_FULL_SLOWDOWN_RATIO = 0.6
+TOO_CLOSE_MIN_SPEED_SCALE = 0.5
 
 # Blind-loss cruise fallback: what to do once the front camera has been
 # fully lost (past TRACK_HOLD_SEC / KF_COAST_MAX_SEC coasting -- see above --
@@ -558,7 +629,7 @@ SIDE_TRACK_STEER_SIGN_BY_BOAT = {"Left": 1.0, "Right": -1.0}
 #   Storm B9–10 | 1.40  | 0.50  | 2.00 | 0.012 | 0.70 | 0.150 | 1.50
 #   Typhoon B12 | 1.80  | 0.80  | 3.50 | 0.008 | 0.80 | 0.350 | 1.80
 # =========================================================
-WAVE_CONTROL_ENABLE          = True
+WAVE_CONTROL_ENABLE          = False
 # If True, wave/rain settings are held back until after startup sync releases
 # (i.e. after all cameras connect and visual lock is established).
 # Set False only if you need waves applied before the formation locks (e.g. pre-wave
@@ -629,6 +700,31 @@ SUIMONO_CAMERA_TILT_STRENGTH = 1.80       # camera pitch/roll from wave surface 
 WAKE_CONTROL_ENABLE = True
 WAKE_ENABLE         = True     # False stops wake emission entirely (clean-water control run)
 WAKE_TARGET         = "all"  # "leader" = only the tracked boat's wake; "all" = every boat
+# "realistic": Unity's BoatSternWake on each boat, modelled on a small planing
+#   hull (leader ~4.6 m at ~18 m/s, Froude ≈ 2.7):
+#     - turbulent stern wash: opaque white water ~1.5 beams wide, flat on the
+#       water, fading over ~10 s along the boat's track;
+#     - Kelvin V arms at the 19.47° half-angle;
+#     - spray: rooster tail off the transom (rises ~2-3 m at cruise, height
+#       grows with speed²) and chine spray sheets.  Spray appears once the
+#       hull planes (Fr > 1) and is what partially hides the leader's hull
+#       from the follower cameras -- the detection-robustness stress.
+#   Only WAKE_REALISTIC_STRENGTH / WAKE_REALISTIC_SPRAY apply; the
+#   intensity/anchor settings below are ignored.
+# "stress": the legacy fx_boatwake occlusion stress test configured by
+#   WAKE_INTENSITY / WAKE_OVERRIDES below.  Its camera-facing puffs stand up
+#   in front of the follower cameras and inflate the YOLO box (run
+#   20261028_093228: area 2x the spawn value while the follower was actually
+#   farther than at spawn), which fakes "too close" and breaks the formation.
+WAKE_STYLE = "realistic"
+# Realistic-style intensity: 1.0 = realistic for this hull and speed.
+# Raise it for a harsher robustness test (2.0 ≈ rough-water heavy spray:
+# denser, larger, more opaque plume); 0.5 = light.  Scales foam opacity and
+# spray density/size/opacity together.
+WAKE_REALISTIC_STRENGTH = 1.0
+# False = foam only (no rooster tail / chine spray) -- a clean A/B against
+# the spray's occlusion effect.
+WAKE_REALISTIC_SPRAY = True
 WAKE_INTENSITY      = 1.0      # 0.0 = baseline … 1.0 = maximum
 # NOTE: run_summaries.csv shows leader_det_rate_pct ~99-100% at intensity=0.7 —
 # the anchor-interpolated wake was not actually occluding the leader in

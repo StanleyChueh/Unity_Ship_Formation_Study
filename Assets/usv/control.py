@@ -23,6 +23,13 @@ _LAST_THROTTLE = {"Left": 0.0, "Right": 0.0}
 # Persistence counter to avoid single-frame area spikes zeroing throttle
 _AREA_OVER_MAX_COUNT = {"Left": 0, "Right": 0}
 
+# Per-side leader acceleration estimate (from the leader_speed Unity reports)
+# for the speed feedforward's acceleration lead term.
+_LEADER_ACCEL_EST = {
+    "Left": {"t": 0.0, "v": 0.0, "a": 0.0},
+    "Right": {"t": 0.0, "v": 0.0, "a": 0.0},
+}
+
 # Blind-loss cruise bookkeeping: when the front camera has been fully lost
 # (no coasting KF track left either), remember when this loss episode began
 # and the steer command in effect at that moment, so the fallback can decay
@@ -213,6 +220,31 @@ def compute_turn_predictive_assist(offset_velocity, area_velocity, prediction_co
     return steer_bias, throttle_bias, confidence
 
 
+def compute_leader_speed_feedforward(side, leader_speed, current_time):
+    """Throttle that makes this follower cruise at the leader's speed.
+
+    Follower hulls (mass 200, drag 2, moveForce 1e4) settle at roughly
+    1/LEADER_SPEED_THROTTLE_FF m/s per unit throttle with a ~0.5 s velocity
+    time constant, so a pure speed match still trails by tau * V while the
+    leader accelerates. Leading by tau * accel removes that startup lag.
+    """
+    est = _LEADER_ACCEL_EST[side]
+    leader_speed = float(leader_speed)
+    dt = current_time - est["t"]
+    if est["t"] > 0.0 and 1e-3 < dt < 0.5:
+        raw_accel = (leader_speed - est["v"]) / dt
+        est["a"] += clamp(float(LEADER_ACCEL_EMA_ALPHA), 0.0, 1.0) * (raw_accel - est["a"])
+    elif dt >= 0.5:
+        est["a"] = 0.0
+    est["t"] = current_time
+    est["v"] = leader_speed
+
+    # Lead only on acceleration; slowing down is handled by the area loop.
+    accel = clamp(est["a"], 0.0, float(LEADER_ACCEL_FF_MAX))
+    target_speed = leader_speed + float(LEADER_ACCEL_FF_TAU_SEC) * accel
+    return clamp(target_speed * float(LEADER_SPEED_THROTTLE_FF), 0.0, float(FOLLOW_FAR_MAX_THROTTLE))
+
+
 def compute_visual_far_boost(area, predicted_area, area_velocity, target_opt, method):
     target_opt = max(float(target_opt), 1.0)
     size_gap = clamp((target_opt - float(area)) / target_opt, 0.0, 1.0)
@@ -314,9 +346,18 @@ def process_boat_vision_based(sock, tx_port, side):
 
     current_time = time.time()
 
-    # One-time initialization of startup steer lock window.
-    if STARTUP_STEER_LOCK_ENABLE and _STARTUP_STEER_LOCK_UNTIL.get(side, 0.0) <= 0.0:
+    # One-time initialization of startup steer lock window. Starts at the
+    # startup-sync release; the first packet arrives while the boats are still
+    # held at spawn, so anchoring there let the lock expire before they moved.
+    if (
+        STARTUP_STEER_LOCK_ENABLE
+        and _STARTUP_STEER_LOCK_UNTIL.get(side, 0.0) <= 0.0
+        and bool(runtime_settings.get("startup_sync_released", True))
+    ):
         _STARTUP_STEER_LOCK_UNTIL[side] = current_time + max(0.0, float(STARTUP_STEER_LOCK_SEC))
+
+    # Updated every step (held or not) so the acceleration estimate is warm.
+    leader_ff = compute_leader_speed_feedforward(side, state.get("leader_speed", 0.0), current_time)
 
     with vision_lock:
         prev_packet_time = float(boat_comm_states[side].get("last_packet_time", 0.0))
@@ -642,7 +683,8 @@ def process_boat_vision_based(sock, tx_port, side):
         else:
             _AREA_OVER_MAX_COUNT[side] = 0
 
-        if _AREA_OVER_MAX_COUNT.get(side, 0) >= int(AREA_PERSISTENCE_FRAMES):
+        too_close = _AREA_OVER_MAX_COUNT.get(side, 0) >= int(AREA_PERSISTENCE_FRAMES)
+        if too_close:
             # Log the zeroing event for diagnosis (Right follower logfile will capture it).
             _log_right_debug(
                 side,
@@ -658,7 +700,21 @@ def process_boat_vision_based(sock, tx_port, side):
                 _LAST_THROTTLE.get(side, 0.0),
                 0.0,
             )
-            throttle = 0.0
+            # Drop below the leader's speed in proportion to the overshoot
+            # rather than cutting throttle to zero. Hulls shed speed with a
+            # ~0.5 s time constant, so a hard zero stops the follower almost
+            # dead while the leader keeps going -- the surge/stop/fall-behind
+            # cycle seen right after release in run 20261028_093228.
+            if front_visual_ref_ready:
+                overshoot = clamp(
+                    -front_area_error_ratio / max(1e-3, float(TOO_CLOSE_FULL_SLOWDOWN_RATIO)),
+                    0.0,
+                    1.0,
+                )
+                throttle = leader_ff * (1.0 - (1.0 - float(TOO_CLOSE_MIN_SPEED_SCALE)) * overshoot)
+                throttle_ceiling = max(throttle_ceiling, min(float(FOLLOW_FAR_MAX_THROTTLE), leader_ff))
+            else:
+                throttle = 0.0
         else:
             if effective_area < target_min:
                 throttle = FOLLOW_MAX_THROTTLE * throttle_gain
@@ -688,17 +744,20 @@ def process_boat_vision_based(sock, tx_port, side):
         )
         throttle = max(throttle, cruise_throttle)
 
-        # Leader-speed feedforward: when at (or near) target distance, set a minimum
-        # throttle proportional to the leader's current speed.  This prevents the
-        # coast-to-near-zero → fall-behind → max-throttle-chase oscillation cycle by
-        # providing a "soft landing" that keeps the follower matched to leader cruise speed.
-        if front_visual_ref_ready and front_area_error_ratio > -float(VISION_AREA_ERROR_DEADZONE_RATIO):
-            leader_ff = clamp(
-                float(state.get("leader_speed", 0.0)) * float(LEADER_SPEED_THROTTLE_FF),
-                0.0,
-                float(FOLLOW_MAX_THROTTLE) * 0.95,
+        # Leader-speed feedforward: when at (or behind) target distance, cruise at
+        # the leader's speed plus a gentle catch-up proportional to the gap.  This
+        # prevents the coast-to-near-zero → fall-behind → max-throttle-chase
+        # oscillation cycle by keeping the follower matched to leader cruise speed.
+        # The ceiling must leave room above the feedforward: FOLLOW_MAX_THROTTLE
+        # alone (0.68 ≈ 15.9 m/s) is below the leader's ~17 m/s cruise, so a
+        # follower sitting exactly on target could not keep pace.
+        if front_visual_ref_ready and not too_close and front_area_error_ratio > -float(VISION_AREA_ERROR_DEADZONE_RATIO):
+            catchup = float(LEADER_FF_CATCHUP_GAIN) * max(0.0, shaped_front_area_error)
+            throttle = max(throttle, leader_ff + catchup)
+            throttle_ceiling = max(
+                throttle_ceiling,
+                min(float(FOLLOW_FAR_MAX_THROTTLE), leader_ff + float(LEADER_FF_CEILING_MARGIN)),
             )
-            throttle = max(throttle, leader_ff)
 
         throttle += side_throttle_bias
 

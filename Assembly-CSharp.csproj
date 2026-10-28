@@ -59,7 +59,7 @@
     <UnityVersion>2022.3.62f3</UnityVersion>
   </PropertyGroup>
   <ItemGroup>
-    <Analyzer Include="/home/stanley/.vscode/extensions/visualstudiotoolsforunity.vstuc-1.3.1/Analyzers/Microsoft.Unity.Analyzers.dll" />
+    <Analyzer Include="/home/stanley/.vscode/extensions/visualstudiotoolsforunity.vstuc-1.3.2/Analyzers/Microsoft.Unity.Analyzers.dll" />
     <Analyzer Include="/home/stanley/Unity/Hub/Editor/2022.3.62f3/Editor/Data/Tools/Unity.SourceGenerators/Unity.SourceGenerators.dll" />
     <Analyzer Include="/home/stanley/Unity/Hub/Editor/2022.3.62f3/Editor/Data/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
@@ -96,6 +96,7 @@
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/fx_causticObject.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/_DEMO/SCRIPTS/sui_demo_animBoat.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/utility_EventTrigger.cs" />
+    <Compile Include="Assets/BoatSternWake.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/cameraTools.cs" />
     <Compile Include="Assets/SimpleMove.cs" />
     <Compile Include="Assets/SUIMONO - WATER SYSTEM 2/SCRIPTS/utility_AdjustCulling.cs" />

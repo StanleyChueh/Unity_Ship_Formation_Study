@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -110,6 +111,10 @@ public class ShipUDPInterface : MonoBehaviour
     private IPEndPoint remoteEndPoint;
     private Thread receiveThread;
     private bool isRunning = true;
+    // High-level commands (set_control_mode / set_trajectory / set_drive_tuning)
+    // received on the UDP thread. They touch Unity APIs (GetComponent, transform),
+    // which throw off the main thread, so they are applied in FixedUpdate instead.
+    private readonly ConcurrentQueue<string> pendingCommands = new ConcurrentQueue<string>();
     private float targetThrottle = 0f;
     private float targetSteer = 0f;
     private float appliedThrottle = 0f;
@@ -201,6 +206,7 @@ public class ShipUDPInterface : MonoBehaviour
 
     void FixedUpdate()
     {
+        ProcessPendingCommands();
         SendState();
 
         if (ShouldHoldSpawnPose())
@@ -338,43 +344,10 @@ public class ShipUDPInterface : MonoBehaviour
                 if (text.Contains("\"cmd\""))
                 {
                     Debug.Log("[ShipUDPInterface] Received: " + text);
-                    try
-                    {
-                        // Determine which GameObject should receive the command:
-                        // prefer explicit `leaderBoat` if assigned, otherwise apply to this GameObject.
-                        Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
-
-                        // Try control-mode first
-                        ControlModeCommand cmode = JsonUtility.FromJson<ControlModeCommand>(text);
-                        if (cmode != null && cmode.cmd == "set_control_mode")
-                        {
-                            SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
-                            if (sm == null)
-                            {
-                                Debug.LogWarning($"[ShipUDPInterface] Received set_control_mode but SimpleMove not found on {targetTransform.name}");
-                            }
-                            else
-                            {
-                                ApplyControlModeCommand(targetTransform, cmode, "[ShipUDPInterface]");
-                            }
-                        }
-
-                        // Then try trajectory params
-                        TrajectoryCommand tcmd = JsonUtility.FromJson<TrajectoryCommand>(text);
-                        if (tcmd != null && tcmd.cmd == "set_trajectory")
-                        {
-                            ApplyTrajectoryCommand(targetTransform, tcmd, text, "[ShipUDPInterface]");
-                        }
-
-                        DriveTuningCommand dcmd = JsonUtility.FromJson<DriveTuningCommand>(text);
-                        if (dcmd != null && dcmd.cmd == "set_drive_tuning")
-                        {
-                            ApplyDriveTuningCommand(dcmd, text, "[ShipUDPInterface]");
-                        }
-                        // If we handled a command, skip control parsing below
-                        if (text.Contains("set_trajectory") || text.Contains("set_control_mode") || text.Contains("set_drive_tuning")) continue;
-                    }
-                    catch {}
+                    // Applied on the main thread in ProcessPendingCommands().
+                    pendingCommands.Enqueue(text);
+                    // If this is a command, skip control parsing below
+                    if (text.Contains("set_trajectory") || text.Contains("set_control_mode") || text.Contains("set_drive_tuning")) continue;
                 }
 
                 ControlData cmd = JsonUtility.FromJson<ControlData>(text);
@@ -454,6 +427,51 @@ public class ShipUDPInterface : MonoBehaviour
         rb.angularVelocity = Vector3.zero;
     }
 
+    void ProcessPendingCommands()
+    {
+        while (pendingCommands.TryDequeue(out string text))
+        {
+            try
+            {
+                // Determine which GameObject should receive the command:
+                // prefer explicit `leaderBoat` if assigned, otherwise apply to this GameObject.
+                Transform targetTransform = leaderBoat != null ? leaderBoat : this.transform;
+
+                // Try control-mode first
+                ControlModeCommand cmode = JsonUtility.FromJson<ControlModeCommand>(text);
+                if (cmode != null && cmode.cmd == "set_control_mode")
+                {
+                    SimpleMove sm = targetTransform.GetComponent<SimpleMove>();
+                    if (sm == null)
+                    {
+                        Debug.LogWarning($"[ShipUDPInterface] Received set_control_mode but SimpleMove not found on {targetTransform.name}");
+                    }
+                    else
+                    {
+                        ApplyControlModeCommand(targetTransform, cmode, "[ShipUDPInterface]");
+                    }
+                }
+
+                // Then try trajectory params
+                TrajectoryCommand tcmd = JsonUtility.FromJson<TrajectoryCommand>(text);
+                if (tcmd != null && tcmd.cmd == "set_trajectory")
+                {
+                    ApplyTrajectoryCommand(targetTransform, tcmd, text, "[ShipUDPInterface]");
+                }
+
+                DriveTuningCommand dcmd = JsonUtility.FromJson<DriveTuningCommand>(text);
+                if (dcmd != null && dcmd.cmd == "set_drive_tuning")
+                {
+                    ApplyDriveTuningCommand(dcmd, text, "[ShipUDPInterface]");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[ShipUDPInterface] Failed to apply command on {boatID}: {ex.Message}");
+            }
+        }
+    }
+
     void ApplyControlModeCommand(Transform targetTransform, ControlModeCommand cmode, string logPrefix)
     {
         if (targetTransform == null || cmode == null)
@@ -474,6 +492,12 @@ public class ShipUDPInterface : MonoBehaviour
         }
         else
         {
+            // Already running a trajectory: a repeated (retried) mode command
+            // must not restart it from rest.
+            if (sm.controlMode == SimpleMove.ControlMode.Trajectory)
+            {
+                return;
+            }
             sm.controlMode = SimpleMove.ControlMode.Trajectory;
             sm.ResetTrajectory();
             Debug.Log($"{logPrefix} Applied control mode Trajectory to {targetTransform.name}");
@@ -492,6 +516,20 @@ public class ShipUDPInterface : MonoBehaviour
         {
             return;
         }
+
+        // Ignore exact repeats of the command already running (startup retries,
+        // the second UDP port, the leader_startup.json fallback); a changed
+        // command still applies.
+        string signature = string.IsNullOrEmpty(rawText)
+            ? null
+            : System.Text.RegularExpressions.Regex.Replace(rawText, @"\s+", "");
+        if (signature != null
+            && sm.controlMode == SimpleMove.ControlMode.Trajectory
+            && signature == sm.appliedTrajectorySignature)
+        {
+            return;
+        }
+        sm.appliedTrajectorySignature = signature;
 
         sm.controlMode = SimpleMove.ControlMode.Trajectory;
         switch ((tcmd.mode ?? "").ToLower())

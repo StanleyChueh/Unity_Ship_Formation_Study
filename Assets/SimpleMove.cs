@@ -43,6 +43,12 @@ public class SimpleMove : MonoBehaviour
     public float maxEmissionRate = 20f;
     public float minSpeedToSpawn = 0.5f;
 
+    // Whitespace-free text of the last set_trajectory applied to this boat.
+    // Python retries the startup command (UDP to two ports + leader_startup.json),
+    // and re-applying an identical one with reset=true restarted the leader from
+    // rest every second while the followers were already released.
+    [System.NonSerialized] public string appliedTrajectorySignature;
+
     private Rigidbody rb;
     private ParticleSystem.EmissionModule wakeEmission;
     private Vector3 spawnPosition;
