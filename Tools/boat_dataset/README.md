@@ -10,6 +10,14 @@ The prepared dataset is in `Datasets/boat_adaptation_v1/`. Start with its
 
 ## Train when ready
 
+For free Google Colab, upload `Boat_Adaptation_Free_Colab.ipynb` to Colab and put
+the prepared training ZIP in the top level of My Drive. Select a GPU runtime and
+run its cells in order. It uses batch 8, extracts images to local Colab storage,
+saves checkpoints/logs directly to Drive and resumes an interrupted run from
+`last.pt`. Completed checkpoints are detected rather than silently retrained.
+The notebook includes final-test and model-download cells. Free GPU allocation
+and session duration are not guaranteed. See the notebook for paths and details.
+
 From the Unity project directory, with the existing `unity_boat` environment:
 
 ```bash

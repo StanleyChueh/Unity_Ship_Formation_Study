@@ -1,0 +1,14 @@
+{
+  "notebook": "Tools/boat_dataset/Boat_Adaptation_Free_Colab.ipynb",
+  "original_notebook_modified": false,
+  "validation": "Local only; not executed on Colab",
+  "code_cells_compiled": 7,
+  "delivered_zip_extraction": "passed; expected train/val/test counts",
+  "training_state_checks": [
+    "fresh fine-tuning",
+    "resume from optimizer checkpoint",
+    "completed run skipped",
+    "nonresumable checkpoint without best.pt rejected"
+  ],
+  "actual_training_started": false
+}

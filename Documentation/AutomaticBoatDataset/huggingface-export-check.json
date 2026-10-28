@@ -1,0 +1,19 @@
+{
+  "dataset": "/home/stanley/Github/Unity_Ship_Formation_Study/Datasets/boat_adaptation_v1_yolo",
+  "model": "/home/stanley/Github/Unity_Ship_Formation_Study/Datasets/boat_detector_starting_model",
+  "archive": "/home/stanley/Github/Unity_Ship_Formation_Study/Datasets/boat_adaptation_v1_yolo_clean.zip",
+  "images": {
+    "train": 3178,
+    "val": 384,
+    "test": 384
+  },
+  "dataset_files": 7893,
+  "archive_bytes": 329982173,
+  "archive_sha256": "496b8fbf74151febdae4bbf52f8b55b156d6b51d3fb28f71b52d1030a061a815",
+  "model_filename": "best_v2.pt",
+  "model_sha256": "360c0efe3ec58725b186ef2bf4fcf037c19218ac7c30eb669eaad1723b6245f9",
+  "copied_files_sha256_verified": true,
+  "labels_validated": true,
+  "extra_dataset_files": [],
+  "uploaded": false
+}
