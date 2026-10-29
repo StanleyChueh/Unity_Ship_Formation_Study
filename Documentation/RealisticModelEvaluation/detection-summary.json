@@ -1,0 +1,206 @@
+{
+  "ultralytics": "8.4.28",
+  "imgsz": 640,
+  "models": {
+    "old": {
+      "filename": "best_v2.pt",
+      "sha256": "360c0efe3ec58725b186ef2bf4fcf037c19218ac7c30eb669eaad1723b6245f9",
+      "splits": {
+        "test": {
+          "metrics": {
+            "metrics/precision(B)": 0.40368970843978125,
+            "metrics/recall(B)": 0.32295223120913397,
+            "metrics/mAP50(B)": 0.2666831586000007,
+            "metrics/mAP50-95(B)": 0.10211986170504031,
+            "fitness": 0.10211986170504031
+          },
+          "per_class": {
+            "leader": {
+              "precision": 0.38602807887502155,
+              "recall": 0.5738831615120275,
+              "map50": 0.45552575851843546,
+              "map50_95": 0.18607845488926278
+            },
+            "follower": {
+              "precision": 0.421351338004541,
+              "recall": 0.07202130090624045,
+              "map50": 0.07784055868156589,
+              "map50_95": 0.018161268520817828
+            }
+          },
+          "speed_ms": {
+            "preprocess": 0.3077897135428387,
+            "inference": 1.5826895442711357,
+            "loss": 0.000397013020977018,
+            "postprocess": 0.6315698411466878
+          },
+          "confusion_matrix_predicted_rows_true_columns": [
+            [
+              194.0,
+              101.0,
+              179.0
+            ],
+            [
+              0.0,
+              36.0,
+              63.0
+            ],
+            [
+              97.0,
+              318.0,
+              0.0
+            ]
+          ],
+          "output": "/home/stanley/Github/Unity_Ship_Formation_Study/Documentation/RealisticModelEvaluation/detection/old_test"
+        },
+        "legacy_val": {
+          "metrics": {
+            "metrics/precision(B)": 0.9816419893131247,
+            "metrics/recall(B)": 0.9887640449438202,
+            "metrics/mAP50(B)": 0.9917164696103604,
+            "metrics/mAP50-95(B)": 0.5938669138807583,
+            "fitness": 0.5938669138807583
+          },
+          "per_class": {
+            "leader": {
+              "precision": 0.9976572503322781,
+              "recall": 1.0,
+              "map50": 0.995,
+              "map50_95": 0.6349007548437725
+            },
+            "follower": {
+              "precision": 0.9656267282939713,
+              "recall": 0.9775280898876404,
+              "map50": 0.9884329392207207,
+              "map50_95": 0.5528330729177441
+            }
+          },
+          "speed_ms": {
+            "preprocess": 0.15339580756011217,
+            "inference": 1.188671175257405,
+            "loss": 0.00039585223308814604,
+            "postprocess": 0.6596973608239654
+          },
+          "confusion_matrix_predicted_rows_true_columns": [
+            [
+              179.0,
+              0.0,
+              2.0
+            ],
+            [
+              0.0,
+              88.0,
+              2.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ]
+          ],
+          "output": "/home/stanley/Github/Unity_Ship_Formation_Study/Documentation/RealisticModelEvaluation/detection/old_legacy_val"
+        }
+      }
+    },
+    "adapted": {
+      "filename": "best_realisitc.pt",
+      "sha256": "bc3ffe46f98c861050d7067ae7358cf8e1c3338a18011c93696d692de14ea452",
+      "splits": {
+        "test": {
+          "metrics": {
+            "metrics/precision(B)": 0.971309299422632,
+            "metrics/recall(B)": 0.9673728333522148,
+            "metrics/mAP50(B)": 0.9798521541754434,
+            "metrics/mAP50-95(B)": 0.6735503350221104,
+            "fitness": 0.6735503350221104
+          },
+          "per_class": {
+            "leader": {
+              "precision": 0.9951749971075067,
+              "recall": 0.9896907216494846,
+              "map50": 0.9891652855884776,
+              "map50_95": 0.6125499378788327
+            },
+            "follower": {
+              "precision": 0.9474436017377572,
+              "recall": 0.945054945054945,
+              "map50": 0.9705390227624091,
+              "map50_95": 0.7345507321653878
+            }
+          },
+          "speed_ms": {
+            "preprocess": 0.31166586458475365,
+            "inference": 1.3611805781250652,
+            "loss": 0.00036363020861074347,
+            "postprocess": 0.8394232916666411
+          },
+          "confusion_matrix_predicted_rows_true_columns": [
+            [
+              289.0,
+              0.0,
+              37.0
+            ],
+            [
+              1.0,
+              439.0,
+              29.0
+            ],
+            [
+              1.0,
+              16.0,
+              0.0
+            ]
+          ],
+          "output": "/home/stanley/Github/Unity_Ship_Formation_Study/Documentation/RealisticModelEvaluation/detection/adapted_test"
+        },
+        "legacy_val": {
+          "metrics": {
+            "metrics/precision(B)": 0.9715930770987076,
+            "metrics/recall(B)": 0.9797518355953131,
+            "metrics/mAP50(B)": 0.98112249975363,
+            "metrics/mAP50-95(B)": 0.5874622524673654,
+            "fitness": 0.5874622524673654
+          },
+          "per_class": {
+            "leader": {
+              "precision": 0.9888755347615327,
+              "recall": 0.9932115363591655,
+              "map50": 0.9939338327091134,
+              "map50_95": 0.6369774243794406
+            },
+            "follower": {
+              "precision": 0.9543106194358826,
+              "recall": 0.9662921348314607,
+              "map50": 0.9683111667981465,
+              "map50_95": 0.5379470805552904
+            }
+          },
+          "speed_ms": {
+            "preprocess": 0.19432502749099875,
+            "inference": 1.0536887044673924,
+            "loss": 0.0019026872853319095,
+            "postprocess": 0.4223782783513052
+          },
+          "confusion_matrix_predicted_rows_true_columns": [
+            [
+              179.0,
+              0.0,
+              3.0
+            ],
+            [
+              0.0,
+              89.0,
+              1.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0
+            ]
+          ],
+          "output": "/home/stanley/Github/Unity_Ship_Formation_Study/Documentation/RealisticModelEvaluation/detection/adapted_legacy_val"
+        }
+      }
+    }
+  }
+}
