@@ -1,0 +1,9 @@
+{
+  "python": "3.10.20",
+  "packages": {
+    "numpy": "2.2.6",
+    "ultralytics": "8.4.28",
+    "torch": "2.11.0",
+    "opencv-python": "4.13.0.92"
+  }
+}

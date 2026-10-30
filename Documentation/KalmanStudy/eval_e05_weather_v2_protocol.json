@@ -1,0 +1,10 @@
+{
+  "name": "e05_weather_v2",
+  "role": "DESCRIPTIVE report-package batch: the weather laps of e03_laps (L04-L10) and e04_wlaps (WL1-WL4) re-run with the weather-trained detector best_realistic_v2.pt; not part of any confirmatory test",
+  "frozen": "2026-10-30, before any e05 run",
+  "notes": "Only change vs e03/e04: detector weights best_realistic_v2.pt (fine-tuned on boat_adaptation_v2_weather_yolo; user-reported val mAP50 0.951). Same cases, durations, dropouts, seeds 4903 and 5021, and the three report methods. Clear-weather/wave-only laps L01-L03 not re-run (by request).",
+  "groups": [
+    {"role": "weather_laps", "cases": ["L04", "L05", "L06", "L07", "L08", "L09", "L10"], "arms": ["on_rs", "off_short", "raw_nogate"], "seeds": [4903, 5021]},
+    {"role": "weather_wlaps", "cases": ["WL1", "WL2", "WL3", "WL4"], "arms": ["on_rs", "off_short", "raw_nogate"], "seeds": [4903, 5021]}
+  ]
+}

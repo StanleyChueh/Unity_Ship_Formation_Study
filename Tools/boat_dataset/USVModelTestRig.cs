@@ -111,7 +111,8 @@ public sealed class USVModelTestRig : MonoBehaviour
     void Update()
     {
         if(!ready)return;
-        if(movingAt<0 && leader.GetComponent<Rigidbody>().velocity.magnitude>1f)movingAt=Time.time;
+        Vector3 leaderVelocity=leader.GetComponent<Rigidbody>().velocity;
+        if(movingAt<0 && new Vector2(leaderVelocity.x,leaderVelocity.z).magnitude>1f)movingAt=Time.time;
         if(Time.time-motionTime>=0.2f){motionTime=Time.time;
             foreach(var b in new[]{leader,left,right}){var p=b.position;motion.WriteLine(string.Format(CultureInfo.InvariantCulture,"{0:F3},{1},{2:F3},{3:F3},{4:F3},{5:F3}",Time.time,b.name,p.x,p.y,p.z,b.GetComponent<Rigidbody>().velocity.magnitude));}motion.Flush();}
         if(movingAt>0 && Time.time-overviewAt>=15f){overviewAt=Time.time;

@@ -1,0 +1,8 @@
+{
+  "study": "v2",
+  "steps_a": 301,
+  "steps_b": 301,
+  "same_image_steps": 281,
+  "same_detection_steps": 297,
+  "max_planar_pose_difference_m": 0.0
+}

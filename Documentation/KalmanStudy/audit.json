@@ -1,0 +1,690 @@
+{
+  "study_version": "v2",
+  "jobs": 60,
+  "paired_primary_episodes": 24,
+  "source_hash_check": "passed",
+  "checked_steps": 39060,
+  "checked_saved_frame_sha256": 78120,
+  "id_box_coordinate_correction": {
+    "encoded_origin_y": 359,
+    "expected_origin_y": 719,
+    "derived_y_shift_px": 360,
+    "raw_logs_unchanged": true,
+    "explanation": "Frozen 720p harness retained a 360p ID-box y-origin constant. All logged ID boxes are translated down by360px in the analysis reader; x/size/pixels and world-pose metrics are unchanged."
+  },
+  "scheduled_censorship_check": "passed",
+  "off_arms_kalman_absence_check": "passed",
+  "paired_initial_pose_check": "passed",
+  "camera_resolution_check": "passed",
+  "per_run": [
+    {
+      "case": "C0_calm_circle",
+      "seed": 1701,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C0_calm_circle",
+      "seed": 1701,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C0_calm_circle",
+      "seed": 1702,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C0_calm_circle",
+      "seed": 1702,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C0_calm_circle",
+      "seed": 1703,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C0_calm_circle",
+      "seed": 1703,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C1_huge_waves",
+      "seed": 1701,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C1_huge_waves",
+      "seed": 1701,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C1_huge_waves",
+      "seed": 1702,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C1_huge_waves",
+      "seed": 1702,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C1_huge_waves",
+      "seed": 1703,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C1_huge_waves",
+      "seed": 1703,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C2_heavy_rain",
+      "seed": 1701,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C2_heavy_rain",
+      "seed": 1701,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C2_heavy_rain",
+      "seed": 1702,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C2_heavy_rain",
+      "seed": 1702,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C2_heavy_rain",
+      "seed": 1703,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C2_heavy_rain",
+      "seed": 1703,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C3_dark_storm",
+      "seed": 1701,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C3_dark_storm",
+      "seed": 1701,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C3_dark_storm",
+      "seed": 1702,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C3_dark_storm",
+      "seed": 1702,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C3_dark_storm",
+      "seed": 1703,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C3_dark_storm",
+      "seed": 1703,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 0
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1701,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1701,
+      "arm": "on_short",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1701,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1701,
+      "arm": "off_matched",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1702,
+      "arm": "off_matched",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1702,
+      "arm": "on_short",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1702,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1702,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1703,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1703,
+      "arm": "on_short",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1703,
+      "arm": "off_matched",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1703,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1701,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1701,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1701,
+      "arm": "off_matched",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1702,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1702,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1702,
+      "arm": "off_matched",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1703,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1703,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1703,
+      "arm": "off_matched",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 120
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1701,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 30
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1701,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 30
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1701,
+      "arm": "off_matched",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 30
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1702,
+      "arm": "off_matched",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 30
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1702,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 30
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1702,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 30
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1703,
+      "arm": "off_matched",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 30
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1703,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 30
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1703,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 30
+    },
+    {
+      "case": "C7_unseen_turn_8s",
+      "seed": 1701,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 160
+    },
+    {
+      "case": "C7_unseen_turn_8s",
+      "seed": 1701,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 160
+    },
+    {
+      "case": "C7_unseen_turn_8s",
+      "seed": 1702,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 160
+    },
+    {
+      "case": "C7_unseen_turn_8s",
+      "seed": 1702,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 160
+    },
+    {
+      "case": "C7_unseen_turn_8s",
+      "seed": 1703,
+      "arm": "off",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 160
+    },
+    {
+      "case": "C7_unseen_turn_8s",
+      "seed": 1703,
+      "arm": "on",
+      "steps": 651,
+      "scheduled_censored_camera_frames": 160
+    }
+  ],
+  "pairs": [
+    {
+      "case": "C0_calm_circle",
+      "seed": 1701,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C0_calm_circle",
+      "seed": 1702,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C0_calm_circle",
+      "seed": 1703,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C1_huge_waves",
+      "seed": 1701,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C1_huge_waves",
+      "seed": 1702,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C1_huge_waves",
+      "seed": 1703,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C2_heavy_rain",
+      "seed": 1701,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C2_heavy_rain",
+      "seed": 1702,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C2_heavy_rain",
+      "seed": 1703,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C3_dark_storm",
+      "seed": 1701,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C3_dark_storm",
+      "seed": 1702,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C3_dark_storm",
+      "seed": 1703,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1701,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1702,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C4_turn_dropout_2s",
+      "seed": 1703,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1701,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1702,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C5_speed_s_dropout",
+      "seed": 1703,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1701,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1702,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C6_brief_dropout",
+      "seed": 1703,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C7_unseen_turn_8s",
+      "seed": 1701,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C7_unseen_turn_8s",
+      "seed": 1702,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    },
+    {
+      "case": "C7_unseen_turn_8s",
+      "seed": 1703,
+      "initial_planar_pose_difference_m": 0.0,
+      "leader_max_planar_difference_m": 0.0,
+      "fixed_probe_max_height_difference_m": 0.0,
+      "initial_frame_hash_matches": 50,
+      "initial_frames": 50
+    }
+  ],
+  "compiled_shader_source_sha256": {
+    "Assets/Resources/USVSurfaceNoise.cginc": "f3d06ad18f0f95b6d8881dd8b28dfcaf948989d37efb2fccfff05d062c19388c",
+    "Assets/Resources/USVOceanSurface.cginc": "82360465e05936f1b1109110bcf31d368f012bdb630bdca154655ee3d49968f9",
+    "Assets/Resources/USVWakeField.shader": "eb5fe6cffd85bbb7ce42ad056f54a0f6a2490b7515e48c0ae3f861f39059e0ea",
+    "Assets/Resources/StudyRain.shader": "f8082df5916cab070d5c0361d08df72747401be0f8c381198082b4e165568e73",
+    "Assets/Resources/USVFoamParticle.shader": "1f5cdf4bb22f7e34e42bf952696339322625cd0a7f890b9668a4d47dfe42ab4c",
+    "Assets/DatasetCapture/USVAutomaticDataset.cs": "a4eb91fc868dc490dcfff6ccf2584d293089056621db0728ff1872190b168a7d",
+    "Assets/DatasetCapture/Resources/USVDatasetIdentity.shader": "7ecb533a9016bfa1ebdc6eece6a30bbf0b1a0025f6fc7ae66b5e48d097d55d90",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoUnderwaterFog.shader": "99765b966e545973bf7e079ab661ee7bad23877e645a0df599a1bdaecd1b143a",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_depthmask2.shader": "adf0038304fdd8239100aa22b130545bb215fd45a7b18956650b23271a0bdb3f",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoDepth.shader": "caef0e92e5476bbcc7ff4d12734399a00c9269d81d5e0d1f9e3ee2092c240dd1",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_depthmask.shader": "74c5fada5d8678186d95421d13fbdcc2a79170fab04c9f9a75fd8e3ac4614137",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoDepthMask.shader": "a4d574117d05dd4ddab820306036b7d21e8f73e478865864c7b133316f95d5db",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_surface.shader": "9a8115786e0c05fbb4457420e4088af1359688d525124676847908231a273445",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_ShorelineObject.shader": "b1f193a0fefd0fdd820892bacfe3a0f739aefb56170eb98d598d2b96948056de",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_effect_reflect.shader": "94998e3ea7f172d6e4a6a823521b7e1570044fdcd343f87a246903b59abeae1e",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoDistanceBlur_orig.shader": "b02461b76e111414267d74d2a939beef39bf00591997863e491c867b161e1feb",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_WakeMask.shader": "9097618821732ca74fbb0a5912b72212d0e4c9b00981b838e81343591e0ae53d",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoDistanceBlur.shader": "4e7662fa56b5bdfe52c5837f2cfeeca41fe1f418bd20788ed71c5a51ae656cc3",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_Depth.shader": "69ec53e495b234303aa30bb496f290a5484537512172591e25dafd4bdb1c7e52",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_particleAlpha.shader": "a8137efbca18538119256f7f9c4975adf5ad195481628d5d21568be34a967dad",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_Fog.shader": "0a636a87d69cbb4430239a203901932167181c47fe3bd108056cd1688f6a8190",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_effect_splash.shader": "1ec18020e4fcb83fc6d9f3da9cfe62fe325f71ad073131cac1d7542ae3872847",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/SuimonoFunctionLibrary.cginc": "bcc743d33414c3363e0903a8d7e9bec8a1979b49a121bbbde1c431fe32d52ca1",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_surface_under.shader": "259bc57d95b691b49c4660022fbb3422c89142645f300eb25b9c79abea0dfa8c",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_FX_NormalBlend.shader": "fef1c64641fd388629a5f7078eb2ef99c60a1a2a10f37551bbb87b8468fef395",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_particleAlphaOverlay.shader": "4eae4a6a092fee1854a4d53e54ed566ab21a36371c032ea45b83dcdcb20ba2d2",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_surface_scale.shader": "1a6126f7a70548fd864dede10794dba48640f261c4e85968ba16453d38b89e35",
+    "Assets/SUIMONO - WATER SYSTEM 2/SHADERS/Suimono2_clearfx.shader": "481a40cbc45d5ee0e0dcfb5bd45fc93f40617b2a68aa0346d19bb1e163ab8497"
+  },
+  "note": "Private-copy diffs are from the final run. Arm-specific hold-window changes are defined in the frozen patch generator and job files. Ground truth is evaluation-only except the pre-existing leader/ego telemetry supplied to the production controller."
+}

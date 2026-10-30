@@ -1,0 +1,179 @@
+case,metric_key,metric,KALMAN ON,KALMAN OFF,NO bbox filtering
+L01_lap_calm,rmse_m,Formation RMSE (m),2.6768213260919644,5.850501069675589,4.884400782479031
+L01_lap_calm,broken_pct,"Formation broken, error > 10 m (% of time)",0.0,0.4995836802664446,0.0
+L01_lap_calm,mean_iou,Triangle IoU (0-1),0.8204634023549492,0.6584410720072286,0.7274384404823392
+L01_lap_calm,p95_error_m,"Follower error, 95th percentile (m)",4.127441152705452,9.730270861437733,9.437076158840737
+L01_lap_calm,peak_follower_error_m,"Follower error, peak (m)",4.3464241445434855,10.638955102467014,10.888374292922036
+L01_lap_calm,min_separation_m,Minimum boat separation (m),25.739026133949398,24.892490733503212,25.586620719706538
+L01_lap_calm,fresh_pct,Fresh YOLO leader detection (% frames),88.34304746044963,88.34304746044963,88.34304746044963
+L01_lap_calm,correct_measurement_pct,Correct leader detection (% frames),88.34304746044963,88.34304746044963,88.34304746044963
+L01_lap_calm,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),2.559099638073835,4.881031210792462,4.534052097244284
+L01_lap_calm,steer_variation_per_s,Steer variation (|d steer| per s),0.0041738282003895896,0.016504352590021375,0.01348770312500002
+L01_lap_calm,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.010294063425286375,0.07581549053007913,0.06161053201035841
+L01_lap_calm,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],2.894300914070314,6.1556175356254945,5.073004064787276
+L01_lap_calm,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],0.0,2.2481265611990007,0.0
+L02_lap_rough_sea1.5,rmse_m,Formation RMSE (m),2.3868699994912403,5.3464539049026065,4.430951522363276
+L02_lap_rough_sea1.5,broken_pct,"Formation broken, error > 10 m (% of time)",0.0,0.0,0.0
+L02_lap_rough_sea1.5,mean_iou,Triangle IoU (0-1),0.8440996534977954,0.6894330083950384,0.747501154263944
+L02_lap_rough_sea1.5,p95_error_m,"Follower error, 95th percentile (m)",4.13508110751452,9.169524262962097,8.579377538951812
+L02_lap_rough_sea1.5,peak_follower_error_m,"Follower error, peak (m)",4.756234815071234,10.33190788860909,10.425995744624798
+L02_lap_rough_sea1.5,min_separation_m,Minimum boat separation (m),20.90494009165507,22.51074502783788,23.817209915986012
+L02_lap_rough_sea1.5,fresh_pct,Fresh YOLO leader detection (% frames),88.13488759367193,88.05162364696086,88.00999167360533
+L02_lap_rough_sea1.5,correct_measurement_pct,Correct leader detection (% frames),88.13488759367193,88.05162364696086,87.92672772689426
+L02_lap_rough_sea1.5,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),2.229385659712124,4.929070442910412,3.9618515927415228
+L02_lap_rough_sea1.5,steer_variation_per_s,Steer variation (|d steer| per s),0.009354772915337187,0.01567087095880092,0.018817192708333826
+L02_lap_rough_sea1.5,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.02979127799071842,0.10436722679949195,0.10683514127194477
+L02_lap_rough_sea1.5,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],2.524308491206761,5.720794379062044,4.696314412140955
+L02_lap_rough_sea1.5,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],0.0,1.2489592006661114,0.0
+L03_lap_huge_waves_sea3,rmse_m,Formation RMSE (m),3.118615473559296,22.270222121125045,20.11072941443059
+L03_lap_huge_waves_sea3,broken_pct,"Formation broken, error > 10 m (% of time)",0.0,17.735220649458785,19.983347210657783
+L03_lap_huge_waves_sea3,mean_iou,Triangle IoU (0-1),0.7895886464286391,0.5788745829227226,0.5967696963990368
+L03_lap_huge_waves_sea3,p95_error_m,"Follower error, 95th percentile (m)",5.204512909701735,62.164473951883956,40.6966994054512
+L03_lap_huge_waves_sea3,peak_follower_error_m,"Follower error, peak (m)",7.538085916462386,118.98564116157092,129.9160743505155
+L03_lap_huge_waves_sea3,min_separation_m,Minimum boat separation (m),18.016433348800376,18.687545117375528,23.35077008448511
+L03_lap_huge_waves_sea3,fresh_pct,Fresh YOLO leader detection (% frames),82.38967527060782,76.39467110741049,76.68609492089925
+L03_lap_huge_waves_sea3,correct_measurement_pct,Correct leader detection (% frames),81.97335553705246,75.56203164029975,75.89508742714405
+L03_lap_huge_waves_sea3,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),2.8270704156938233,23.48865604429039,20.831501857259294
+L03_lap_huge_waves_sea3,steer_variation_per_s,Steer variation (|d steer| per s),0.017680527846319592,0.030690364378583666,0.03322594479166739
+L03_lap_huge_waves_sea3,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.04223149882103459,0.13833082755840553,0.1635722735142789
+L03_lap_huge_waves_sea3,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],3.26773069233033,117.33491424053824,26.708775067171857
+L03_lap_huge_waves_sea3,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],0.0,27.685262281432138,20.940882597835135
+L04_lap_light_rain0.15,rmse_m,Formation RMSE (m),407.78326071584837,531.3874872603941,857.5631379876614
+L04_lap_light_rain0.15,broken_pct,"Formation broken, error > 10 m (% of time)",44.296419650291426,93.92173189009159,98.16819317235637
+L04_lap_light_rain0.15,mean_iou,Triangle IoU (0-1),0.40859221941739027,0.14418589623319605,0.04390467816900453
+L04_lap_light_rain0.15,p95_error_m,"Follower error, 95th percentile (m)",1174.819110489074,1414.233309289552,1867.6590121471045
+L04_lap_light_rain0.15,peak_follower_error_m,"Follower error, peak (m)",1451.090582337117,1643.230668980619,1883.1163613924678
+L04_lap_light_rain0.15,min_separation_m,Minimum boat separation (m),20.829827365939693,24.145442180332203,23.12718328924173
+L04_lap_light_rain0.15,fresh_pct,Fresh YOLO leader detection (% frames),24.6044962531224,16.319733555370526,4.3713572023313905
+L04_lap_light_rain0.15,correct_measurement_pct,Correct leader detection (% frames),24.47960033305579,16.319733555370526,4.121565362198168
+L04_lap_light_rain0.15,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),425.33159321381123,546.4067397162535,863.9043227513931
+L04_lap_light_rain0.15,steer_variation_per_s,Steer variation (|d steer| per s),0.028895530865943972,0.02153726570883602,0.013299602604164684
+L04_lap_light_rain0.15,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.029705182437853177,0.1254693452235771,0.06491911316845071
+L04_lap_light_rain0.15,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],208.04244552884796,481.26141621748695,883.2357063921269
+L04_lap_light_rain0.15,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],23.355537052456288,93.92173189009159,97.0857618651124
+L05_lap_rain0.25,rmse_m,Formation RMSE (m),167.52897623514633,533.60650417813,879.6360948384008
+L05_lap_rain0.25,broken_pct,"Formation broken, error > 10 m (% of time)",33.1390507910075,92.75603663613656,99.50041631973356
+L05_lap_rain0.25,mean_iou,Triangle IoU (0-1),0.5105014234674753,0.1541735366003006,0.021180035261962996
+L05_lap_rain0.25,p95_error_m,"Follower error, 95th percentile (m)",481.7476633166549,1423.8113474110417,1838.0497947783429
+L05_lap_rain0.25,peak_follower_error_m,"Follower error, peak (m)",844.4076484938759,1653.883116457326,1860.4387461044464
+L05_lap_rain0.25,min_separation_m,Minimum boat separation (m),23.34313912393582,25.592701957573304,17.634517424000688
+L05_lap_rain0.25,fresh_pct,Fresh YOLO leader detection (% frames),21.89841798501249,10.32472939217319,1.7485428809325563
+L05_lap_rain0.25,correct_measurement_pct,Correct leader detection (% frames),21.856786011656954,10.283097418817652,1.4987510407993339
+L05_lap_rain0.25,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),180.651869993537,548.8546477522231,890.2081399544167
+L05_lap_rain0.25,steer_variation_per_s,Steer variation (|d steer| per s),0.02610605705389,0.01985515723789608,0.011167602083331776
+L05_lap_rain0.25,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.05064093204352169,0.11987434400554672,0.03026759195311403
+L05_lap_rain0.25,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],168.29408131274,625.3400479113404,912.3652164787027
+L05_lap_rain0.25,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],30.09991673605329,93.5886761032473,99.45878434637802
+L06_lap_rain0.4,rmse_m,Formation RMSE (m),769.288656157649,970.2574929194158,1126.072751160518
+L06_lap_rain0.4,broken_pct,"Formation broken, error > 10 m (% of time)",70.4412989175687,96.75270607826812,99.75020815986679
+L06_lap_rain0.4,mean_iou,Triangle IoU (0-1),0.2131300722093502,0.0631356756684211,0.02695204495376187
+L06_lap_rain0.4,p95_error_m,"Follower error, 95th percentile (m)",1734.4499118331094,1758.3853324129163,1863.1405315500376
+L06_lap_rain0.4,peak_follower_error_m,"Follower error, peak (m)",1851.73967580893,1849.332065239797,1874.2407723098554
+L06_lap_rain0.4,min_separation_m,Minimum boat separation (m),17.601829442152678,18.912307276724952,21.281634088542127
+L06_lap_rain0.4,fresh_pct,Fresh YOLO leader detection (% frames),8.867610324729393,1.623646960865945,0.6661115736885929
+L06_lap_rain0.4,correct_measurement_pct,Correct leader detection (% frames),8.867610324729393,1.4987510407993339,0.6244796003330557
+L06_lap_rain0.4,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),786.4336404010729,985.5364732896652,1134.8773665969643
+L06_lap_rain0.4,steer_variation_per_s,Steer variation (|d steer| per s),0.012882846495991833,0.007250445052175131,0.004361937500002662
+L06_lap_rain0.4,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.021672365294933705,0.027233241187138234,0.01130573836268419
+L06_lap_rain0.4,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],608.8749139955701,875.4224340432966,1023.7544740579943
+L06_lap_rain0.4,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],77.14404662781016,97.41881765195672,99.8751040799334
+L07_lap_heavy_rain1.0,rmse_m,Formation RMSE (m),1033.4546651899975,1252.7706534701567,1274.4325700011318
+L07_lap_heavy_rain1.0,broken_pct,"Formation broken, error > 10 m (% of time)",98.0849292256453,100.0,99.91673605328893
+L07_lap_heavy_rain1.0,mean_iou,Triangle IoU (0-1),0.0284358033404162,0.017160918964420093,0.011840441127505564
+L07_lap_heavy_rain1.0,p95_error_m,"Follower error, 95th percentile (m)",1895.1857537982924,1887.4498160743385,1883.3368762503324
+L07_lap_heavy_rain1.0,peak_follower_error_m,"Follower error, peak (m)",1903.937560268001,1896.1924269250273,1890.7175769755252
+L07_lap_heavy_rain1.0,min_separation_m,Minimum boat separation (m),26.554570420246787,28.53550949753748,5.1348858875946295
+L07_lap_heavy_rain1.0,fresh_pct,Fresh YOLO leader detection (% frames),0.041631973355537054,0.0,0.041631973355537054
+L07_lap_heavy_rain1.0,correct_measurement_pct,Correct leader detection (% frames),0.0,0.0,0.0
+L07_lap_heavy_rain1.0,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),1038.2996544093373,1256.052629323976,1275.8773905144437
+L07_lap_heavy_rain1.0,steer_variation_per_s,Steer variation (|d steer| per s),0.003769811400511892,0.0,0.0016350587500003969
+L07_lap_heavy_rain1.0,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.004699733807455949,7.964223697198846e-10,0.00081838718461246
+L07_lap_heavy_rain1.0,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],1134.2689132289156,1130.1833599606175,1277.8212192875017
+L07_lap_heavy_rain1.0,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],98.0849292256453,100.0,99.95836802664446
+L08_lap_night,rmse_m,Formation RMSE (m),1250.9675004308353,1255.429210706156,1254.4150245352218
+L08_lap_night,broken_pct,"Formation broken, error > 10 m (% of time)",98.0849292256453,100.0,99.83347210657784
+L08_lap_night,mean_iou,Triangle IoU (0-1),0.029585814710598787,0.01703353774567944,0.018815967351627536
+L08_lap_night,p95_error_m,"Follower error, 95th percentile (m)",1897.2700190680675,1887.0004949848949,1886.102169490729
+L08_lap_night,peak_follower_error_m,"Follower error, peak (m)",1906.2223766253235,1895.9182308823906,1894.9798891472649
+L08_lap_night,min_separation_m,Minimum boat separation (m),26.550699791906776,28.49327783938077,27.13020974345067
+L08_lap_night,fresh_pct,Fresh YOLO leader detection (% frames),0.0,0.0,0.0
+L08_lap_night,correct_measurement_pct,Correct leader detection (% frames),0.0,0.0,0.0
+L08_lap_night,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),1254.568863048854,1258.509540825398,1257.576052899623
+L08_lap_night,steer_variation_per_s,Steer variation (|d steer| per s),8.089890051189058e-05,0.0,0.0
+L08_lap_night,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.0005968963998861483,7.964189354299952e-10,4.676814491233472e-16
+L08_lap_night,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],1241.1849434585474,1238.5882468841073,1243.546971563491
+L08_lap_night,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],98.0849292256453,100.0,99.87510407993338
+L09_lap_night_rain0.15,rmse_m,Formation RMSE (m),959.1023365128839,961.0187256668097,904.5821811960591
+L09_lap_night_rain0.15,broken_pct,"Formation broken, error > 10 m (% of time)",98.0849292256453,100.0,99.83347210657784
+L09_lap_night_rain0.15,mean_iou,Triangle IoU (0-1),0.028366330925356252,0.017932208061445958,0.019785459396459273
+L09_lap_night_rain0.15,p95_error_m,"Follower error, 95th percentile (m)",1667.024945545827,1825.1376203626567,1710.6228494552604
+L09_lap_night_rain0.15,peak_follower_error_m,"Follower error, peak (m)",1683.478830174904,1860.036037229448,1757.4523684673504
+L09_lap_night_rain0.15,min_separation_m,Minimum boat separation (m),24.30952955048514,28.49327783938077,15.154400688866206
+L09_lap_night_rain0.15,fresh_pct,Fresh YOLO leader detection (% frames),0.5828476269775187,0.5828476269775187,0.4163197335553705
+L09_lap_night_rain0.15,correct_measurement_pct,Correct leader detection (% frames),0.0,0.0,0.0
+L09_lap_night_rain0.15,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),961.3011359057423,959.6449665660325,909.3594595930316
+L09_lap_night_rain0.15,steer_variation_per_s,Steer variation (|d steer| per s),0.02097340247281729,0.013361677246708215,0.009999999999997726
+L09_lap_night_rain0.15,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.02252392776766016,0.009479979400666973,0.010516493056723497
+L09_lap_night_rain0.15,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],744.9776608333357,855.5838116306717,996.8302710731614
+L09_lap_night_rain0.15,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],98.0849292256453,100.0,99.87510407993338
+L10_lap_dark_storm,rmse_m,Formation RMSE (m),583.3521568951409,685.5332130579384,910.8639923647554
+L10_lap_dark_storm,broken_pct,"Formation broken, error > 10 m (% of time)",98.16819317235637,100.0,99.83347210657784
+L10_lap_dark_storm,mean_iou,Triangle IoU (0-1),0.021411411808688524,0.010224484994363188,0.019715368250793563
+L10_lap_dark_storm,p95_error_m,"Follower error, 95th percentile (m)",938.7003228358257,1196.7759336732245,1766.352750741903
+L10_lap_dark_storm,peak_follower_error_m,"Follower error, peak (m)",959.9269037078799,1236.9454329139232,1775.9628316714109
+L10_lap_dark_storm,min_separation_m,Minimum boat separation (m),26.550699791906776,5.224213924683119,17.692460816974695
+L10_lap_dark_storm,fresh_pct,Fresh YOLO leader detection (% frames),2.289758534554538,2.955870108243131,2.622814321398834
+L10_lap_dark_storm,correct_measurement_pct,Correct leader detection (% frames),0.0,0.0,0.0
+L10_lap_dark_storm,scheduled_gap_rmse_m,Formation RMSE during bbox dropouts (m),568.7849468063556,672.0739019434295,912.8200104479049
+L10_lap_dark_storm,steer_variation_per_s,Steer variation (|d steer| per s),0.063050526565881,0.09936833603721262,0.04699947856857183
+L10_lap_dark_storm,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.08714317091685438,0.07590708866773214,0.057129536220859554
+L10_lap_dark_storm,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],573.2714238017936,678.6510517718898,796.5008928246168
+L10_lap_dark_storm,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],98.29308909242297,100.0,99.91673605328893
+WL1_lap_rain0.15_nonfixed,rmse_m,Formation RMSE (m),186.1708511914992,379.4613534111146,365.1702204648775
+WL1_lap_rain0.15_nonfixed,broken_pct,"Formation broken, error > 10 m (% of time)",83.45221112696149,91.44079885877318,96.14835948644793
+WL1_lap_rain0.15_nonfixed,mean_iou,Triangle IoU (0-1),0.28814915254377,0.12184628854824552,0.08177158268963416
+WL1_lap_rain0.15_nonfixed,p95_error_m,"Follower error, 95th percentile (m)",532.1481090992655,844.7493428261972,819.8318749642629
+WL1_lap_rain0.15_nonfixed,peak_follower_error_m,"Follower error, peak (m)",688.027644721888,851.9182153413267,826.8281592680703
+WL1_lap_rain0.15_nonfixed,min_separation_m,Minimum boat separation (m),22.344440800719628,23.436944517491963,25.0556595326844
+WL1_lap_rain0.15_nonfixed,fresh_pct,Fresh YOLO leader detection (% frames),17.83166904422254,18.18830242510699,14.978601997146935
+WL1_lap_rain0.15_nonfixed,correct_measurement_pct,Correct leader detection (% frames),17.83166904422254,18.18830242510699,14.978601997146935
+WL1_lap_rain0.15_nonfixed,steer_variation_per_s,Steer variation (|d steer| per s),0.043712082713979035,0.028119399953721983,0.022095941071426928
+WL1_lap_rain0.15_nonfixed,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.02891121065833589,0.1564503577450022,0.18448468474986648
+WL1_lap_rain0.15_nonfixed,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],170.1822614394073,358.10271039148256,380.6444402502367
+WL1_lap_rain0.15_nonfixed,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],81.52639087018545,91.51212553495006,96.93295292439373
+WL2_lap_rain0.25_nonfixed,rmse_m,Formation RMSE (m),359.5178124572617,363.6615929197325,399.7849632732209
+WL2_lap_rain0.25_nonfixed,broken_pct,"Formation broken, error > 10 m (% of time)",87.58915834522111,100.0,99.00142653352354
+WL2_lap_rain0.25_nonfixed,mean_iou,Triangle IoU (0-1),0.121360521676073,0.1044903048475806,0.055567160619364876
+WL2_lap_rain0.25_nonfixed,p95_error_m,"Follower error, 95th percentile (m)",703.2795234261944,827.4055918113806,834.3060321213682
+WL2_lap_rain0.25_nonfixed,peak_follower_error_m,"Follower error, peak (m)",932.3680644291677,844.1020196625976,841.4916350690005
+WL2_lap_rain0.25_nonfixed,min_separation_m,Minimum boat separation (m),20.550030170988187,23.954432384704806,22.16249342668176
+WL2_lap_rain0.25_nonfixed,fresh_pct,Fresh YOLO leader detection (% frames),11.982881597717546,14.122681883024251,10.057061340941512
+WL2_lap_rain0.25_nonfixed,correct_measurement_pct,Correct leader detection (% frames),11.911554921540656,14.05135520684736,9.985734664764621
+WL2_lap_rain0.25_nonfixed,steer_variation_per_s,Steer variation (|d steer| per s),0.02763643511590171,0.0392255833395013,0.024622678571428122
+WL2_lap_rain0.25_nonfixed,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.03057279847078825,0.14405119564029342,0.15265413074950296
+WL2_lap_rain0.25_nonfixed,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],245.2520408950724,361.038480401565,444.87652810749194
+WL2_lap_rain0.25_nonfixed,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],82.5962910128388,96.00570613409414,98.57346647646219
+WL3_lap_night_nonfixed,rmse_m,Formation RMSE (m),560.1110185591384,525.4742491306871,550.1376819540302
+WL3_lap_night_nonfixed,broken_pct,"Formation broken, error > 10 m (% of time)",96.14835948644793,99.2867332382311,99.42938659058488
+WL3_lap_night_nonfixed,mean_iou,Triangle IoU (0-1),0.05204252461096772,0.03438281133818459,0.035129836640801076
+WL3_lap_night_nonfixed,p95_error_m,"Follower error, 95th percentile (m)",838.8963811096149,826.9526795405347,827.4098389021586
+WL3_lap_night_nonfixed,peak_follower_error_m,"Follower error, peak (m)",846.0509549893608,834.280980879337,834.5860831403411
+WL3_lap_night_nonfixed,min_separation_m,Minimum boat separation (m),24.690308014290718,4.19175719223986,1.4379283008886203
+WL3_lap_night_nonfixed,fresh_pct,Fresh YOLO leader detection (% frames),0.0,0.07132667617689016,0.0
+WL3_lap_night_nonfixed,correct_measurement_pct,Correct leader detection (% frames),0.0,0.0,0.0
+WL3_lap_night_nonfixed,steer_variation_per_s,Steer variation (|d steer| per s),0.00014084706453186308,0.005458885714285715,0.0
+WL3_lap_night_nonfixed,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.0010307082168730022,0.0074400000000791645,7.969815283916303e-16
+WL3_lap_night_nonfixed,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],532.8762279102126,495.89508655666566,501.90303201697037
+WL3_lap_night_nonfixed,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],96.21968616262482,99.42938659058487,99.50071326676178
+WL4_lap_night_rain0.15_nonfixed,rmse_m,Formation RMSE (m),404.9167034215073,447.6372904697184,515.8143833547837
+WL4_lap_night_rain0.15_nonfixed,broken_pct,"Formation broken, error > 10 m (% of time)",96.29101283880172,99.42938659058488,99.42938659058488
+WL4_lap_night_rain0.15_nonfixed,mean_iou,Triangle IoU (0-1),0.042772091891560296,0.022412452374191243,0.031071310822906827
+WL4_lap_night_rain0.15_nonfixed,p95_error_m,"Follower error, 95th percentile (m)",822.7905581307544,899.8939303801174,817.3735605796542
+WL4_lap_night_rain0.15_nonfixed,peak_follower_error_m,"Follower error, peak (m)",1040.2876094097794,963.5840425225553,824.9522147139027
+WL4_lap_night_rain0.15_nonfixed,min_separation_m,Minimum boat separation (m),24.690308014290718,14.440405274188404,5.0298668330135
+WL4_lap_night_rain0.15_nonfixed,fresh_pct,Fresh YOLO leader detection (% frames),1.355206847360913,0.3566333808844508,0.4992867332382311
+WL4_lap_night_rain0.15_nonfixed,correct_measurement_pct,Correct leader detection (% frames),0.0,0.0,0.0
+WL4_lap_night_rain0.15_nonfixed,steer_variation_per_s,Steer variation (|d steer| per s),0.04343047323283093,0.015186317107686004,0.008742857142852478
+WL4_lap_night_rain0.15_nonfixed,throttle_variation_per_s,Throttle variation (|d throttle| per s),0.04427268317443243,0.020238998157083778,0.012845348350242262
+WL4_lap_night_rain0.15_nonfixed,rmse_m_both_seeds,Mean formation RMSE over both seeds (m) [n=2],460.5888059520946,490.4372820401477,515.7285677333039
+WL4_lap_night_rain0.15_nonfixed,broken_pct_both_seeds,Mean broken time over both seeds (%) [n=2],96.29101283880172,99.50071326676178,99.50071326676178

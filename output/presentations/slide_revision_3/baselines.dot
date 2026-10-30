@@ -1,0 +1,14 @@
+digraph G {
+graph [rankdir=TB,bgcolor=white,pad="0.35",nodesep=".35",ranksep=".65",fontname="Noto Sans CJK TC",fontsize=23,fontcolor="#003366",label="e02 四組對照：估測策略與控制器必須分開說明",labelloc=t];
+node [shape=box,fontname="Noto Sans CJK TC",fontsize=17,fontcolor="#43576c",color="#718398",margin=".18,.14"];
+edge [fontname="Noto Sans CJK TC",fontsize=14,color="#718398",fontcolor="#43576c"];
+a [label="相同偵測器、情境與配對 seed\n閉迴路軌跡不同，影像不會完全相同"];
+k [label="融合 KF\n視覺＋速度融合、gating\n3 秒 hold",color="#003366",fontcolor="#003366"];
+e [label="EMA 對照\n視覺 EMA＋變化率\n3 秒 hold"];
+r [label="raw\n無追蹤濾波／外推\n0 秒 hold"];
+o [label="原 OFF\nEMA＋有限差分預測\n0.6 秒 hold"];
+c [label="共同新版距離／速度控制器\n三組均有 Leader 速度前饋"];
+d [label="原面積控制器\n同樣有 Leader 速度前饋"];
+a->k;a->e;a->r;a->o;k->c;e->c;r->c;o->d;
+{rank=same;k;e;r;o;}
+}

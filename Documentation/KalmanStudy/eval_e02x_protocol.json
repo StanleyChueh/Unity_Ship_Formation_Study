@@ -1,0 +1,11 @@
+{
+  "name": "e02x",
+  "role": "DESCRIPTIVE extension of e02 for the report package; not part of any confirmatory test",
+  "frozen": "2026-10-29, after e02 was complete, before any e02x run",
+  "notes": "raw_nogate = no production bbox track gate/reacquire bias + no tracker filtering; run on the e02 seeds so it pairs with existing e02 runs. Weather/wave limit cases run for all 5 arms on two fresh seeds. No inference is performed on e02x.",
+  "groups": [
+    {"role": "e02-pairing", "cases": ["C8", "C10", "W1"], "arms": ["raw_nogate"], "seeds": [3911, 4027, 4153, 4271, 4409, 4513, 4637, 4789]},
+    {"role": "e02-pairing", "cases": ["C0", "C1", "C4", "C7"], "arms": ["raw_nogate"], "seeds": [3911, 4027, 4153, 4271]},
+    {"role": "all-weather", "cases": ["C9", "W2", "C5", "C2", "W3", "W4", "C3"], "arms": ["on_rs", "off_rs", "off_short", "raw", "raw_nogate"], "seeds": [4903, 5021]}
+  ]
+}

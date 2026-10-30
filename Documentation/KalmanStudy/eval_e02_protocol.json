@@ -1,0 +1,20 @@
+{
+  "name": "e02",
+  "frozen": "2026-10-29, after d04 development (seeds 1701-1702) and the raw-arm smoke test (seed 1703), before any e02 run",
+  "document": "Documentation/KalmanStudy/EVALUATION_PROTOCOL_E02.md",
+  "candidate": "on_rs",
+  "groups": [
+    {"role": "primary", "cases": ["C8", "C10", "W1"], "arms": ["on_rs", "off_rs", "off_short", "raw"],
+     "seeds": [3911, 4027, 4153, 4271, 4409, 4513, 4637, 4789]},
+    {"role": "secondary", "cases": ["C0", "C1", "C4", "C7"], "arms": ["on_rs", "off_rs", "off_short", "raw"],
+     "seeds": [3911, 4027, 4153, 4271]}
+  ],
+  "inference": {
+    "alpha": 0.05,
+    "primary_cases": ["C8", "C10", "W1"],
+    "seeds": [3911, 4027, 4153, 4271, 4409, 4513, 4637, 4789],
+    "fixed_sequence": [["on_rs", "raw"], ["on_rs", "off_short"], ["on_rs", "off_rs"]],
+    "descriptive_contrasts": [["off_rs", "raw"], ["off_rs", "off_short"], ["off_short", "raw"]],
+    "practical_target": "geometric RMSE reduction >= 20% AND lower mean formation-broken (>10 m) time"
+  }
+}

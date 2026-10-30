@@ -1,0 +1,10 @@
+{
+  "name": "e03_laps",
+  "role": "DESCRIPTIVE report-package batch: complete FIXED circle lap under every weather/wave level, all filtering methods; not part of any confirmatory test",
+  "frozen": "2026-10-29, after e02/e02x, before any e03 run",
+  "notes": "R360 circle at 18 m/s, 135 s motion = one full lap (verified per run from leader heading). 2 s scheduled bbox dropouts every 18 s in every condition. Fresh seeds 4903 and 5021.",
+  "groups": [
+    {"role": "laps", "cases": ["L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10"],
+     "arms": ["on_rs", "off_short", "off_rs", "raw", "raw_nogate"], "seeds": [4903, 5021]}
+  ]
+}

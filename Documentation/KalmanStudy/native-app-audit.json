@@ -1,0 +1,30 @@
+{
+  "source_check": "passed",
+  "records": [
+    {
+      "arm": "off",
+      "sampled_rgb_sha256_verified": 74,
+      "sampled_frames_matched_to_processing": 71,
+      "matched_pre_suppression_selected_boxes": 54,
+      "pre_suppression_correct_leader": 54,
+      "pre_suppression_wrong_identity": 0,
+      "mean_three_boat_rms_m": 73.272594,
+      "mean_formation_iou": 0.412226,
+      "metrics_definition": "Original app summary:3-boat/equilateral target, descriptive1pair. Global value repeated in side rows is not another replicate."
+    },
+    {
+      "arm": "on",
+      "sampled_rgb_sha256_verified": 74,
+      "sampled_frames_matched_to_processing": 72,
+      "matched_pre_suppression_selected_boxes": 52,
+      "pre_suppression_correct_leader": 52,
+      "pre_suppression_wrong_identity": 0,
+      "mean_three_boat_rms_m": 93.221081,
+      "mean_formation_iou": 0.398569,
+      "metrics_definition": "Original app summary:3-boat/equilateral target, descriptive1pair. Global value repeated in side rows is not another replicate."
+    }
+  ],
+  "selection_stage": "selected-targets.jsonl records the candidate BEFORE scheduled suppression and BEFORE control updates. It must not be presented as the bbox actually used during a suppressed interval.",
+  "sampling": "RGB/identity sampled every2s; asynchronous processing can skip sampled frames. Hash-matched subset is diagnostic, not an unbiased detection-rate estimate.",
+  "coordinate_convention": "Native observer already uses height-1-y1. No360px correction is applied here."
+}

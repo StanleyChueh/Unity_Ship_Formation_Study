@@ -1,0 +1,40 @@
+{
+  "updated_local": "2026-10-29 12:43:58 CST",
+  "quota": {
+    "timestamp": "2026-10-29T04:43:21.677Z",
+    "used_percent": 97.0,
+    "remaining_percent": 3.0,
+    "resets_at": 1793256500
+  },
+  "batches": [
+    {
+      "batch": "v2",
+      "completed": 60,
+      "planned": 60,
+      "active_or_partial": [],
+      "source_freeze_check": false
+    },
+    {
+      "batch": "robust_development/d01",
+      "completed": 8,
+      "planned": 8,
+      "active_or_partial": [],
+      "source_freeze_check": true
+    },
+    {
+      "batch": "robust_development/d02",
+      "completed": 4,
+      "planned": 10,
+      "active_or_partial": [
+        {
+          "run": "C4_turn_dropout_2s_1701_on",
+          "last_log": "C4_turn_dropout_2s on 1701 t= 5.0"
+        }
+      ],
+      "source_freeze_check": false
+    }
+  ],
+  "original_report_finalized": true,
+  "native_original_pair_complete": true,
+  "instructions": "Read RESUME.md and RESUME_KALMAN_STUDY.md. Inspect existing processes before launching. Preserve all failed results and frozen sources. No stronger held-out evaluation or production deployment has been completed."
+}

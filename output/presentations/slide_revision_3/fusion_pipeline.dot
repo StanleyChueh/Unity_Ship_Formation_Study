@@ -1,0 +1,17 @@
+digraph G {
+graph [rankdir=LR,bgcolor="white",pad="0.35",nodesep="0.5",ranksep="0.7",fontname="Noto Sans CJK TC",label="e02：視覺與速度融合，再送入共同控制器",labelloc=t,fontsize=24,fontcolor="#003366"];
+node [shape=box,fontname="Noto Sans CJK TC",fontsize=18,color="#718398",fontcolor="#43576c",margin="0.2,0.14",penwidth=1.2];
+edge [fontname="Noto Sans CJK TC",fontsize=14,color="#718398",fontcolor="#43576c",arrowsize=.7];
+rgb [label="船載 RGB → YOLO\n水平偏移 o、面積 A、信心值"];
+range [label="視覺距離\nzᵣ = c / √A"];
+offset [label="水平追蹤 KF\n狀態：o、ȯ"];
+fusion [label="距離融合 KF\n狀態：距離 r、偏差 b\n含異常量測處理",color="#003366",fontcolor="#003366"];
+speed [label="模擬器持續提供\nLeader 速度、自身速度"];
+control [label="距離／速度控制＋轉向\n輸出油門與轉向命令"];
+rgb -> range; rgb -> offset;
+range -> fusion [label="量測更新"];
+speed -> fusion [label="預測輸入"];
+fusion -> control [label="估測距離、距離變化率"];
+offset -> control [label="估測水平偏移"];
+speed -> control [label="速度前饋",style=dashed];
+}

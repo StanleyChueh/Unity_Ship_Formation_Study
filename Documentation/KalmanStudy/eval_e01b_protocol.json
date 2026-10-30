@@ -1,0 +1,12 @@
+{
+  "name": "e01b",
+  "frozen": "2026-10-29, during e01 run 15/216, BEFORE any e01 result was analyzed or viewed",
+  "reason": "User time constraint. e01 is truncated after its primary group (runs 1-96, unchanged). e01's secondary/control/limit groups (runs 97-216) are not run; this reduced set replaces them.",
+  "document": "Documentation/KalmanStudy/EVALUATION_PROTOCOL.md (amendment section)",
+  "candidate": "on",
+  "groups": [
+    {"role": "secondary", "cases": ["C1", "C7"], "arms": ["on", "off_short"], "seeds": [2701, 2869, 3007]},
+    {"role": "control", "cases": ["C0"], "arms": ["on", "off_short"], "seeds": [2701, 2869]},
+    {"role": "limit", "cases": ["C2", "C3", "W3"], "arms": ["on", "off_short"], "seeds": [2701, 2869]}
+  ]
+}

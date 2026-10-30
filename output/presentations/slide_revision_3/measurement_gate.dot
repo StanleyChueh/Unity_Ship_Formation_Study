@@ -1,0 +1,12 @@
+digraph G {
+graph [rankdir=LR,bgcolor=white,pad="0.35",ranksep="0.65",nodesep="0.5",label="量測可信度處理：不同機制，不是多個濾波器串接",labelloc=t,fontname="Noto Sans CJK TC",fontsize=23,fontcolor="#003366"];
+node [shape=box,fontname="Noto Sans CJK TC",fontsize=17,color="#718398",fontcolor="#43576c",margin="0.18,0.14"];
+edge [fontname="Noto Sans CJK TC",fontsize=14,color="#718398",fontcolor="#43576c"];
+a [label="新偵測＋目前預測"];
+b [label="計算標準化殘差\n距離及水平偏移\nν = (z − ẑ) / √S"];
+c [label="已建立追蹤後\n任一 |ν| > 4？",shape=diamond];
+d [label="接受量測\n信心值／噪聲調整 R\nHuber 降低大殘差權重\nKalman 更新"];
+e [label="本次不融合\n視為量測缺失\n不延長追蹤壽命"];
+f [label="繼續有限時間預測\n連續拒絕達 5 次則重建追蹤"];
+a -> b -> c;c -> d [label="否"];c -> e [label="是"];e -> f;
+}

@@ -1,0 +1,11 @@
+--- production/control.py
++++ isolated/control.py
+@@ -5,7 +5,7 @@
+ 
+ import json
+ import math
+-import time
++from study_clock import clock as time
+ import csv
+ import os
+ from datetime import datetime

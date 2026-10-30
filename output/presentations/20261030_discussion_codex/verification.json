@@ -1,0 +1,10 @@
+{
+  "pages": 29,
+  "overflow": [],
+  "render_differences_after_font_subsetting": [],
+  "source_freeze": {
+    "status": "passed",
+    "checked_files": 26,
+    "manifest_sha256": "fb0439303515f8714f6529330ed5c14ec50bdecf26511150599dab15b73f777b"
+  }
+}

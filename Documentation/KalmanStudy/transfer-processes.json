@@ -1,0 +1,5 @@
+{
+  "recorded": "2026-10-29 12:44:37 CST",
+  "processes_visible_in_this_namespace": [],
+  "note": "Sandbox may not expose escalated processes; empty does not establish completion. Verify raw completion markers and runner logs."
+}

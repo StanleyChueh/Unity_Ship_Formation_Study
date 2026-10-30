@@ -1,0 +1,46 @@
+[
+  {
+    "label": "C0 calm (sea 0.55)",
+    "run": "Experiments/KalmanStudy/v2/runs/C0_calm_circle_1702_on"
+  },
+  {
+    "label": "C8 rough sea 1.0 + 2 s dropouts",
+    "run": "Experiments/KalmanStudy/robust_evaluation/e01/runs/C8_clear_speed_s_dropout_2701_on"
+  },
+  {
+    "label": "C1 HUGE waves (sea 3.0)",
+    "run": "Experiments/KalmanStudy/v2/runs/C1_huge_waves_1702_on"
+  },
+  {
+    "label": "C10 HUGE waves + S-turn + dropouts",
+    "run": "Experiments/KalmanStudy/robust_evaluation/e01/runs/C10_huge_waves_s_dropout_2701_on"
+  },
+  {
+    "label": "W1 light rain 0.15, sea 1.5",
+    "run": "Experiments/KalmanStudy/robust_evaluation/e01/runs/W1_rain015_rough_s_2701_on"
+  },
+  {
+    "label": "W2 rain 0.25, sea 1.5",
+    "run": "Experiments/KalmanStudy/robust_development/d03_weather/runs/W2_rain025_rough_s_1701_off"
+  },
+  {
+    "label": "C5 rain 0.4, sea 1.0",
+    "run": "Experiments/KalmanStudy/v2/runs/C5_speed_s_dropout_1702_on"
+  },
+  {
+    "label": "C2 HEAVY rain 1.0 + fog",
+    "run": "Experiments/KalmanStudy/v2/runs/C2_heavy_rain_1702_on"
+  },
+  {
+    "label": "W3 night, sea 1.5",
+    "run": "Experiments/KalmanStudy/robust_development/d03_weather/runs/W3_night_rough_s_1701_off"
+  },
+  {
+    "label": "W4 night + rain 0.15",
+    "run": "Experiments/KalmanStudy/robust_development/d03_weather/runs/W4_night_rain015_rough_s_1701_off"
+  },
+  {
+    "label": "C3 DARK storm (rain 1.0, sea 1.5)",
+    "run": "Experiments/KalmanStudy/v2/runs/C3_dark_storm_1702_on"
+  }
+]

@@ -1,0 +1,13 @@
+--- production/SimpleMove.cs
++++ isolated/SimpleMove.cs
+@@ -142,8 +142,8 @@
+ 
+     void RunKeyboardControl()
+     {
+-        float move = Input.GetAxis("Vertical");   // W/S
+-        float turn = Input.GetAxis("Horizontal"); // A/D
++        float move = 0.0f;   // W/S
++        float turn = 0.0f; // A/D
+ 
+         if (move != 0)
+         {

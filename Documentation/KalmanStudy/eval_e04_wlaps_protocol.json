@@ -1,0 +1,9 @@
+{
+  "name": "e04_wlaps",
+  "role": "DESCRIPTIVE report-package batch: W1-W4 weather on a non-fixed leader path that completes a full circle; not part of any confirmatory test",
+  "frozen": "2026-10-30, before any e04 run",
+  "notes": "Leader straight 22 s then constant 0.11 rad/s turn through 360 deg (complete at t=79 s), 85 s motion. Natural detector losses only (as W1-W4). Arms = the three report methods. Seeds 4903, 5021.",
+  "groups": [
+    {"role": "wlaps", "cases": ["WL1", "WL2", "WL3", "WL4"], "arms": ["on_rs", "off_short", "raw_nogate"], "seeds": [4903, 5021]}
+  ]
+}

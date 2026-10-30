@@ -3,5 +3,11 @@ Temp/
 obj/
 Datasets/
 runs/boat_adaptation/
+Experiments/KalmanStudy/
 Library/
 Temp/
+Tools/**/__pycache__/
+# Large generated media: kept locally, not pushed (already-tracked files are unaffected)
+*.mp4
+*.zip
+output/presentations/20261030_discussion_codex/10-30_USV_Formation_Ready.pdf

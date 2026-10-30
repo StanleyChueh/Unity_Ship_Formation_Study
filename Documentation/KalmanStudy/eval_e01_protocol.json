@@ -1,0 +1,25 @@
+{
+  "name": "e01",
+  "frozen": "2026-10-29, after all development (v2, d01, d02, d03, d03_weather) and before any e01 run",
+  "document": "Documentation/KalmanStudy/EVALUATION_PROTOCOL.md",
+  "candidate": "on",
+  "groups": [
+    {"role": "primary", "cases": ["C8", "C10", "W1"], "arms": ["on", "on_ego", "off", "off_short"],
+     "seeds": [2701, 2869, 3007, 3163, 3299, 3461, 3581, 3727]},
+    {"role": "secondary", "cases": ["C1", "C4", "C7", "C5"], "arms": ["on", "on_ego", "off", "off_short"],
+     "seeds": [2701, 2869, 3007, 3163, 3299]},
+    {"role": "control", "cases": ["C0"], "arms": ["on", "off_short"],
+     "seeds": [2701, 2869, 3007, 3163, 3299]},
+    {"role": "limit", "cases": ["C2", "C3", "W3"], "arms": ["on", "off_short"],
+     "seeds": [2701, 2869, 3007, 3163, 3299]}
+  ],
+  "inference": {
+    "alpha": 0.05,
+    "primary_cases": ["C8", "C10", "W1"],
+    "seeds": [2701, 2869, 3007, 3163, 3299, 3461, 3581, 3727],
+    "fixed_sequence": [["on", "off_short"], ["on", "off"]],
+    "descriptive_contrasts": [["on_ego", "off_short"], ["on_ego", "off"], ["on_ego", "on"], ["off", "off_short"]],
+    "practical_target": "geometric RMSE reduction >= 20% AND lower mean formation-broken (>10 m) time",
+    "secondary_family_descriptive": {"cases": ["C1", "C4", "C5"], "seeds": [2701, 2869, 3007, 3163, 3299]}
+  }
+}

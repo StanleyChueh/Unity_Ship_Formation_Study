@@ -1,0 +1,64 @@
+--- production/vision.py
++++ isolated/vision.py
+@@ -1,6 +1,7 @@
++import study_runtime
+ import socket
+ import struct
+-import time
++from study_clock import clock as time
+ 
+ import cv2
+ import numpy as np
+@@ -757,13 +758,17 @@
+     print("[Vision] Central processing thread started.")
+ 
+     try:
+-        model = YOLO(YOLO_MODEL_PATH)
++        model = study_runtime.AuditYOLO(YOLO(YOLO_MODEL_PATH))
+         print(f"[Vision] Model {YOLO_MODEL_PATH} loaded successfully.")
+     except Exception as exc:
+         print(f"[Vision] Failed to load YOLO model: {exc}")
+         return
+ 
+     yolo_uses_cuda, yolo_half_enabled = configure_yolo_runtime(model)
++    torch.backends.cudnn.benchmark = False
++    torch.backends.cudnn.deterministic = True
++    torch.backends.cuda.matmul.allow_tf32 = False
++    torch.backends.cudnn.allow_tf32 = False
+     print(f"[Vision] YOLO runtime on {YOLO_DEVICE} (half={yolo_half_enabled})." if yolo_uses_cuda else "[Vision] YOLO runtime on CPU/default device.")
+ 
+     yolo_predict_kwargs = {
+@@ -786,6 +791,7 @@
+         else:
+             print(f"[Vision] Depth Anything disabled: {depth_estimator.error}")
+ 
++    study_runtime.ready.set()
+     times_dict = {stream_name: time.time() for stream_name in CAMERA_STREAMS}
+     display_times = {stream_name: 0.0 for stream_name in CAMERA_STREAMS}
+     depth_cache = {
+@@ -795,6 +801,8 @@
+ 
+     try:
+         while True:
++            study_runtime.frames_ready.wait()
++            study_runtime.frames_ready.clear()
+             pending_streams = []
+             for stream_name, config in CAMERA_STREAMS.items():
+                 with frame_lock:
+@@ -1193,6 +1201,7 @@
+                                 wake_target = None
+                                 wake_mask = None
+ 
++                    study_runtime.record_selection(stream_name, best_box, best_area, center_offset, sim_loss_forced, det_conf_meas)
+                     if best_box is not None:
+                         if role == "front" and detection_method in ("YOLO", "FUSED"):
+                             lock_visual_reference(boat_side, "front", center_offset, best_area, target_kind=target_kind)
+@@ -1418,5 +1427,8 @@
+                         display_frames[stream_name] = display_frame
+                     display_times[stream_name] = current_time
+ 
++            study_runtime.batch_done.set()
+     except Exception as exc:
+         print(f"[Vision] Error: {exc}")
++        study_runtime.error = repr(exc)
++        study_runtime.batch_done.set()
