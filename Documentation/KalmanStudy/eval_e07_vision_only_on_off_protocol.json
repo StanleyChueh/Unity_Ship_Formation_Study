@@ -1,0 +1,10 @@
+{
+  "name": "e07_vision_only_on_off",
+  "role": "DESCRIPTIVE comparison: Kalman ON vs Kalman OFF when BOTH are strictly vision-only (camera + own commands; no leader speed, speed sensor or heading). Not a confirmatory test.",
+  "frozen": "2026-11-02, before any e07 run",
+  "notes": "Detector best_realistic_v2.pt. on_pv = VisionRangeTracker, q=6 from d05_vo_tune. off_short_pv = production Kalman-OFF controller; leader speed from low-passed finite differences (tau 1 s from d05_vo_tune), own speed from the same command model. Same laps, dropouts and seeds as e05 plus huge waves, and two speed-change cases with the e06 seeds. No tuning on these seeds.",
+  "groups": [
+    {"role": "laps", "cases": ["L03", "L07", "L08", "L09", "L10"], "arms": ["on_pv", "off_short_pv"], "seeds": [4903, 5021]},
+    {"role": "speed_changes", "cases": ["C8", "C10"], "arms": ["on_pv", "off_short_pv"], "seeds": [4903, 5021, 5147]}
+  ]
+}

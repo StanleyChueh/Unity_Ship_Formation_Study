@@ -17,6 +17,9 @@ scheduled dropouts, controllers, seeds (4903, 5021), and the three report method
 Re-run: weather cases only, L04–L10 (full R360 circle lap, 2 s dropouts every 18 s) and WL1–WL4
 (non-fixed path: straight, then a full 360° turn of radius ~164 m). L01–L03 (calm / waves only) not re-run.
 
+**All three methods here also receive the leader's true speed from the simulator**, so these results are not vision-only. For the
+test without leader speed, see `../vision_only/README.md`.
+
 ## Contents
 
 | Path | What |

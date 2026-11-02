@@ -24,6 +24,11 @@ ARMS = [('on_rs', 'KALMAN ON', (62, 168, 46)), ('off_short', 'KALMAN OFF', (155,
 CASES = [(f'L{k:02d}_'+n, 4903) for k, n in enumerate(['lap_calm', 'lap_rough_sea1.5', 'lap_huge_waves_sea3', 'lap_light_rain0.15',
          'lap_rain0.25', 'lap_rain0.4', 'lap_heavy_rain1.0', 'lap_night', 'lap_night_rain0.15', 'lap_dark_storm'], 1)]
 CASES += [(n, 4903) for n in ['WL1_lap_rain0.15_nonfixed', 'WL2_lap_rain0.25_nonfixed', 'WL3_lap_night_nonfixed', 'WL4_lap_night_rain0.15_nonfixed']]
+if os.environ.get('KS_VIEWS_SET') == 'vision_only':   # e06: the same layout for the with/without leader speed runs
+    ARMS = [('on_rs', 'WITH leader speed', (62, 168, 46)), ('on_vo', 'NO leader speed', (0, 161, 237)), ('on_pv', 'VISION ONLY (strict)', (214, 120, 150))]
+    CASES = [(n, 4903) for n in ['C0_calm_circle', 'C8_clear_speed_s_dropout', 'C10_huge_waves_s_dropout', 'W3_night_rough_s']]
+if os.environ.get('KS_VIEWS_SET') == 'vision_only_on_off':   # e07: both methods strictly vision-only
+    ARMS = [('on_pv', 'KALMAN ON', (62, 168, 46)), ('off_short_pv', 'KALMAN OFF', (155, 155, 155))]
 ROW_H, HEAD_H, TOP_W, CAM_W, CAM_H, PANEL_X = 360, 30, 326, 537, 302, 1400
 LEFT_C, RIGHT_C = (214, 120, 42), (52, 104, 235)   # BGR of #2a78d6 / #eb6834
 
@@ -100,10 +105,11 @@ def panel(case, job, series, t_now, hist, final, turned):
     if os.environ.get('KS_DETECTOR_LABEL'):
         cv2.putText(P, os.environ['KS_DETECTOR_LABEL'], (110, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 179, 255), 2)
     desc = f'sea {job["sea"]}  rain {job["rain"]}{"  NIGHT" if job["dark"] else ""}'
-    motion = 'fixed circle R360' if job['motion'] == 'circle' else 'non-fixed: straight, then full turn'
+    motion = dict(circle='fixed circle R360', variable='non-fixed: speed changes + S-turns').get(job['motion'], 'non-fixed: straight, then full turn')
     cv2.putText(P, desc, (14, 64), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (220, 220, 220), 1)
     cv2.putText(P, motion, (14, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (220, 220, 220), 1)
-    cv2.putText(P, f'lap {min(100.0, turned/3.6):5.1f} %   t = {t_now:5.1f} s', (14, 118), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (220, 220, 220), 1)
+    progress = f'lap {min(100.0, turned/3.6):5.1f} %   ' if job['motion'] != 'variable' else ''
+    cv2.putText(P, f'{progress}t = {t_now:5.1f} s', (14, 118), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (220, 220, 220), 1)
     x0, x1, y0, y1, ymax = 52, W-14, 150, 600, 400.0
     def X(t): return int(x0+(t+5)/(job['duration']+5)*(x1-x0))
     def Y(e): return int(y1-math.log10(1+min(e, ymax))/math.log10(1+ymax)*(y1-y0))
@@ -155,14 +161,14 @@ def render(item):
     if any(d is None for d in dirs.values()):
         return f'skip {case}: missing runs'
     data = {a: load(d) for a, d in dirs.items()}
-    job = json.loads((dirs['on_rs']/'job.json').read_text())
+    job = json.loads((dirs[ARMS[0][0]]/'job.json').read_text())
     series, final = {}, {}
     for a, rows in data.items():
         t = [r['t'] for r in rows]
         e = [math.sqrt(np.mean(np.square(errors(r)[0]))) for r in rows]
         series[a] = (t, e)
         final[a] = math.sqrt(np.mean(np.square([v for tt, v in zip(t, e) if 15 <= tt <= job['duration']])))
-    ref = data['on_rs']
+    ref = data[ARMS[0][0]]
     turned = [0.0]
     for a_, b_ in zip(ref, ref[1:]):
         h0 = math.atan2(a_['boats'][0]['fx'], a_['boats'][0]['fz'])
@@ -178,7 +184,7 @@ def render(item):
         for k, (a, label, color) in enumerate(ARMS):
             rows = data[a]
             row = rows[i]
-            y = k*ROW_H
+            y = k*ROW_H+(1080-len(ARMS)*ROW_H)//2
             e_now = math.sqrt(np.mean(np.square(errors(row)[0])))
             hist[a].append(e_now)
             cv2.rectangle(canvas, (0, y), (PANEL_X, y+HEAD_H), color, -1)
@@ -188,7 +194,7 @@ def render(item):
             cy = y+HEAD_H+(ROW_H-HEAD_H-CAM_H)//2
             canvas[cy:cy+CAM_H, TOP_W:TOP_W+CAM_W] = camera(dirs[a], row, 'Left')
             canvas[cy:cy+CAM_H, TOP_W+CAM_W:TOP_W+2*CAM_W] = camera(dirs[a], row, 'Right')
-        canvas[:, PANEL_X:] = panel(case, job, series, data['on_rs'][i]['t'], hist, final, turned[i])
+        canvas[:, PANEL_X:] = panel(case, job, series, data[ARMS[0][0]][i]['t'], hist, final, turned[i])
         p.stdin.write(canvas.tobytes())
     p.stdin.close()
     p.wait()

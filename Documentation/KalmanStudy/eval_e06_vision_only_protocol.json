@@ -1,0 +1,9 @@
+{
+  "name": "e06_vision_only",
+  "role": "DESCRIPTIVE comparison: does the Kalman tracker/controller need leader-speed telemetry? Not a confirmatory test (3 seeds per cell).",
+  "frozen": "2026-11-02, after development sweep d05_vo_tune (seeds 1701, 1702 only), before any e06 run",
+  "notes": "Detector best_realistic_v2.pt in all arms. on_rs = reference with leader speed. on_vo = same structure with leader speed estimated from camera + own speed (q=6 chosen on development seeds). on_pv = strict: camera + own commands only, no speed sensor or heading. Cases: three variable-speed S-turn cases (leader speed changes, where telemetry should matter most) and one constant-speed circle. Reduced by request to answer only the with/without leader speed question; non-Kalman baselines without leader speed have development data only (d05_vo_tune).",
+  "groups": [
+    {"role": "with_vs_without_leader_speed", "cases": ["C0", "C8", "C10", "W3"], "arms": ["on_rs", "on_vo", "on_pv"], "seeds": [4903, 5021, 5147]}
+  ]
+}

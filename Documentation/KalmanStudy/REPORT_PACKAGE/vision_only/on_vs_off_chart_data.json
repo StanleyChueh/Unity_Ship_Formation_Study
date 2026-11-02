@@ -1,0 +1,83 @@
+[
+ {
+  "label": "Heavy rain",
+  "on_pv": [
+   2.08,
+   2.59
+  ],
+  "off_short_pv": [
+   4.19,
+   4.29
+  ]
+ },
+ {
+  "label": "Night",
+  "on_pv": [
+   3.52,
+   4.25
+  ],
+  "off_short_pv": [
+   7.67,
+   8.26
+  ]
+ },
+ {
+  "label": "Night + rain",
+  "on_pv": [
+   3.27,
+   4.04
+  ],
+  "off_short_pv": [
+   6.38,
+   7.68
+  ]
+ },
+ {
+  "label": "Dark storm",
+  "on_pv": [
+   3.18,
+   3.88
+  ],
+  "off_short_pv": [
+   6.55,
+   7.6
+  ]
+ },
+ {
+  "label": "Clear, speed changes",
+  "on_pv": [
+   8.46,
+   9.12,
+   7.44
+  ],
+  "off_short_pv": [
+   18.43,
+   10.39,
+   7.82
+  ]
+ },
+ {
+  "label": "Huge waves",
+  "on_pv": [
+   891.13,
+   3.55
+  ],
+  "off_short_pv": [
+   6.92,
+   7.6
+  ]
+ },
+ {
+  "label": "Huge waves, speed changes",
+  "on_pv": [
+   14.73,
+   100.66,
+   14.13
+  ],
+  "off_short_pv": [
+   105.56,
+   15.53,
+   80.91
+  ]
+ }
+]

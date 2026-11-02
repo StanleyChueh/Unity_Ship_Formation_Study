@@ -16,9 +16,13 @@ from analyze import load, traces, summary
 from gap_prediction import summarize as gap_summary
 
 CONTRASTS = [('on', 'off_short'), ('on', 'off'), ('on_ego', 'off_short'), ('on_ego', 'off'), ('on_ego', 'on'), ('off', 'off_short'),
-             ('on_rs', 'raw'), ('on_rs', 'off_short'), ('on_rs', 'off_rs'), ('off_rs', 'raw'), ('off_rs', 'off_short'), ('off_short', 'raw'), ('on_rs', 'raw_nogate'), ('raw', 'raw_nogate')]
+             ('on_rs', 'raw'), ('on_rs', 'off_short'), ('on_rs', 'off_rs'), ('off_rs', 'raw'), ('off_rs', 'off_short'), ('off_short', 'raw'), ('on_rs', 'raw_nogate'), ('raw', 'raw_nogate'),
+             ('on_vo', 'on_rs'), ('on_pv', 'on_rs'), ('on_pv', 'on_vo'), ('on_vo', 'off_short_vo'), ('on_vo', 'raw_nogate_vo'), ('on_pv', 'off_short_vo'), ('on_pv', 'raw_nogate_vo'), ('off_short_vo', 'off_short'), ('on_pv', 'off_short_pv')]
 LABEL = dict(on_rs='KF range/speed (d04, candidate e02)', off_rs='EMA range/speed (d04)', raw='No tracker filter (raw, d04 ctrl)', raw_nogate='No bbox filtering at all (d04 ctrl)',
-             on_ego='KF+ego (d03)', on='KF (d02, candidate e01)', off='EMA 3 s', off_short='EMA 0.6 s (production OFF)')
+             on_ego='KF+ego (d03)', on='KF (d02, candidate e01)', off='EMA 3 s', off_short='EMA 0.6 s (production OFF)',
+             on_vo='KF vision + own speed, NO leader speed', on_pv='KF vision + own commands only (strict)', off_short_vo='Production OFF, NO leader speed', off_short_pv='Production OFF, camera + own commands only (strict)',
+             raw_nogate_vo='No bbox filtering, NO leader speed', on_zero='on_rs with leader speed simply missing', off_short_zero='Production OFF with leader speed simply missing',
+             on_vo_q03='on_vo q=0.3', on_vo_q6='on_vo q=6', off_short_vo_t03='off_short_vo tau=0.3', off_short_vo_t3='off_short_vo tau=3')
 
 
 def pairwise(records, treatment, baseline):
