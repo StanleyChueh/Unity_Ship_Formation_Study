@@ -1,0 +1,48 @@
+fold 0 hand_R: mean innovation log-lik per Q scale {1: -12.617677257639604, 3: -12.416022560683432, 10: -12.315544311330118, 30: -12.427807142112407, 100: -12.72780153108554, 300: -13.08680630682991} -> 10
+fold 0 learned_R: mean innovation log-lik per Q scale {1: -11.822904009998433, 3: -11.371849660583152, 10: -11.213653883100845, 30: -11.415605983629948, 100: -11.871789653853751, 300: -12.395236957681474} -> 10
+fold 0: learned R {'det_x': 0.00161, 'det_y': 0.01178, 'wh': 0.00837, 'flow_x': 0.01355, 'flow_y': 0.04323}, Q {'hand_R': 10, 'learned_R': 10}, gate samples 37391 (97.8% target)
+fold 1 hand_R: mean innovation log-lik per Q scale {1: -12.757054805226675, 3: -12.468588729588957, 10: -12.363606993562328, 30: -12.47374717723185, 100: -12.814750659705583, 300: -13.249428749557927} -> 10
+fold 1 learned_R: mean innovation log-lik per Q scale {1: -12.264501657706301, 3: -11.653887679763516, 10: -11.367872397555354, 30: -11.550095364341358, 100: -12.028072804753283, 300: -12.613840694873147} -> 10
+fold 1: learned R {'det_x': 0.00159, 'det_y': 0.01061, 'wh': 0.0092, 'flow_x': 0.01492, 'flow_y': 0.04838}, Q {'hand_R': 10, 'learned_R': 10}, gate samples 33345 (97.8% target)
+
+=== clear: 12 test sequences
+  yolo_only              IoU>=.5  85.3%  mIoU 0.648  ctr-err 0.092  wrong  0.0%  jitter  2.11px | fast(>=6px/step): IoU>=.5  65.4%  mIoU 0.577
+  his                    IoU>=.5  73.2%  mIoU 0.590  ctr-err 0.099  wrong  0.1%  jitter  1.55px | fast(>=6px/step): IoU>=.5  53.2%  mIoU 0.506
+  his+learned_Q          IoU>=.5  88.4%  mIoU 0.671  ctr-err 0.077  wrong  0.0%  jitter  1.93px | fast(>=6px/step): IoU>=.5  81.2%  mIoU 0.636
+  his+learned_RQ         IoU>=.5  88.2%  mIoU 0.672  ctr-err 0.076  wrong  0.0%  jitter  2.19px | fast(>=6px/step): IoU>=.5  80.9%  mIoU 0.638
+  bayes_gate+learned_RQ  IoU>=.5  70.4%  mIoU 0.541  ctr-err 0.100  wrong 12.9%  jitter  2.41px | fast(>=6px/step): IoU>=.5  68.0%  mIoU 0.541
+
+=== dark_storm: 8 test sequences
+  yolo_only              IoU>=.5  73.2%  mIoU 0.586  ctr-err 0.106  wrong  0.0%  jitter  4.28px | fast(>=8px/step): IoU>=.5  41.6%  mIoU 0.471
+  his                    IoU>=.5  53.7%  mIoU 0.489  ctr-err 0.146  wrong  0.1%  jitter  3.12px | fast(>=8px/step): IoU>=.5  26.6%  mIoU 0.344
+  his+learned_Q          IoU>=.5  58.5%  mIoU 0.525  ctr-err 0.137  wrong  0.1%  jitter  5.51px | fast(>=8px/step): IoU>=.5  38.8%  mIoU 0.429
+  his+learned_RQ         IoU>=.5  53.7%  mIoU 0.504  ctr-err 0.151  wrong  0.1%  jitter  7.29px | fast(>=8px/step): IoU>=.5  38.1%  mIoU 0.423
+  bayes_gate+learned_RQ  IoU>=.5  44.7%  mIoU 0.431  ctr-err 0.180  wrong  9.3%  jitter 10.41px | fast(>=8px/step): IoU>=.5  33.4%  mIoU 0.383
+
+=== huge_waves: 20 test sequences
+  yolo_only              IoU>=.5  50.6%  mIoU 0.455  ctr-err 0.139  wrong  0.8%  jitter  6.38px | fast(>=12px/step): IoU>=.5   9.5%  mIoU 0.210
+  his                    IoU>=.5  38.2%  mIoU 0.361  ctr-err 0.209  wrong 12.4%  jitter  4.49px | fast(>=12px/step): IoU>=.5   7.8%  mIoU 0.138
+  his+learned_Q          IoU>=.5  51.1%  mIoU 0.445  ctr-err 0.145  wrong  9.3%  jitter  6.10px | fast(>=12px/step): IoU>=.5  22.6%  mIoU 0.260
+  his+learned_RQ         IoU>=.5  46.7%  mIoU 0.406  ctr-err 0.166  wrong 16.8%  jitter  5.88px | fast(>=12px/step): IoU>=.5  19.0%  mIoU 0.220
+  bayes_gate+learned_RQ  IoU>=.5  36.9%  mIoU 0.338  ctr-err 0.231  wrong 21.6%  jitter 10.33px | fast(>=12px/step): IoU>=.5  21.1%  mIoU 0.243
+
+=== night: 8 test sequences
+  yolo_only              IoU>=.5  76.1%  mIoU 0.592  ctr-err 0.099  wrong  0.0%  jitter  3.63px | fast(>=8px/step): IoU>=.5  38.9%  mIoU 0.446
+  his                    IoU>=.5  60.7%  mIoU 0.520  ctr-err 0.126  wrong  0.3%  jitter  2.58px | fast(>=8px/step): IoU>=.5  28.1%  mIoU 0.351
+  his+learned_Q          IoU>=.5  77.8%  mIoU 0.602  ctr-err 0.096  wrong  0.2%  jitter  3.63px | fast(>=8px/step): IoU>=.5  54.1%  mIoU 0.498
+  his+learned_RQ         IoU>=.5  75.1%  mIoU 0.592  ctr-err 0.100  wrong  0.2%  jitter  4.37px | fast(>=8px/step): IoU>=.5  53.8%  mIoU 0.496
+  bayes_gate+learned_RQ  IoU>=.5  68.0%  mIoU 0.541  ctr-err 0.111  wrong  4.7%  jitter  4.56px | fast(>=8px/step): IoU>=.5  50.7%  mIoU 0.474
+
+=== night_rain: 8 test sequences
+  yolo_only              IoU>=.5  77.1%  mIoU 0.603  ctr-err 0.101  wrong  0.0%  jitter  4.08px | fast(>=8px/step): IoU>=.5  44.9%  mIoU 0.481
+  his                    IoU>=.5  63.1%  mIoU 0.535  ctr-err 0.123  wrong  0.1%  jitter  2.55px | fast(>=8px/step): IoU>=.5  32.5%  mIoU 0.392
+  his+learned_Q          IoU>=.5  81.1%  mIoU 0.620  ctr-err 0.093  wrong  0.0%  jitter  3.64px | fast(>=8px/step): IoU>=.5  63.3%  mIoU 0.545
+  his+learned_RQ         IoU>=.5  77.8%  mIoU 0.608  ctr-err 0.096  wrong  0.0%  jitter  4.43px | fast(>=8px/step): IoU>=.5  60.9%  mIoU 0.534
+  bayes_gate+learned_RQ  IoU>=.5  70.8%  mIoU 0.556  ctr-err 0.107  wrong  4.5%  jitter  4.65px | fast(>=8px/step): IoU>=.5  58.4%  mIoU 0.513
+
+=== rain: 8 test sequences
+  yolo_only              IoU>=.5  89.3%  mIoU 0.663  ctr-err 0.082  wrong  0.0%  jitter  3.04px | fast(>=6px/step): IoU>=.5  73.2%  mIoU 0.609
+  his                    IoU>=.5  80.1%  mIoU 0.621  ctr-err 0.092  wrong  0.0%  jitter  1.72px | fast(>=6px/step): IoU>=.5  62.2%  mIoU 0.554
+  his+learned_Q          IoU>=.5  91.3%  mIoU 0.676  ctr-err 0.080  wrong  0.0%  jitter  2.61px | fast(>=6px/step): IoU>=.5  83.0%  mIoU 0.642
+  his+learned_RQ         IoU>=.5  89.1%  mIoU 0.666  ctr-err 0.082  wrong  0.0%  jitter  3.25px | fast(>=6px/step): IoU>=.5  79.9%  mIoU 0.630
+  bayes_gate+learned_RQ  IoU>=.5  81.2%  mIoU 0.609  ctr-err 0.090  wrong  5.2%  jitter  3.72px | fast(>=6px/step): IoU>=.5  75.0%  mIoU 0.595

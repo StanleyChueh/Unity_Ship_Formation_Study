@@ -1,0 +1,264 @@
+{
+ "per_sequence": {
+  "X1_sea4_clear_6007_on_pv/Left": {
+   "group": "X1",
+   "yolo_only": 53.84615384615385,
+   "his": 34.22291993720565,
+   "learned_Q": 53.06122448979592
+  },
+  "X1_sea4_clear_6007_on_pv/Right": {
+   "group": "X1",
+   "yolo_only": 51.87500000000001,
+   "his": 38.125,
+   "learned_Q": 56.40625
+  },
+  "X1_sea4_clear_6113_on_pv/Left": {
+   "group": "X1",
+   "yolo_only": 58.850931677018636,
+   "his": 50.0,
+   "learned_Q": 67.2360248447205
+  },
+  "X1_sea4_clear_6113_on_pv/Right": {
+   "group": "X1",
+   "yolo_only": 52.55813953488372,
+   "his": 36.58914728682171,
+   "learned_Q": 53.48837209302325
+  },
+  "X1_sea4_clear_6229_on_pv/Left": {
+   "group": "X1",
+   "yolo_only": 53.69230769230769,
+   "his": 43.53846153846154,
+   "learned_Q": 52.46153846153846
+  },
+  "X1_sea4_clear_6229_on_pv/Right": {
+   "group": "X1",
+   "yolo_only": 57.585139318885446,
+   "his": 47.21362229102167,
+   "learned_Q": 45.04643962848297
+  },
+  "X2_sea5_clear_6007_on_pv/Left": {
+   "group": "X2",
+   "yolo_only": 46.869983948635635,
+   "his": 29.85553772070626,
+   "learned_Q": 47.99357945425361
+  },
+  "X2_sea5_clear_6007_on_pv/Right": {
+   "group": "X2",
+   "yolo_only": 45.211930926216645,
+   "his": 35.32182103610675,
+   "learned_Q": 49.45054945054945
+  },
+  "X2_sea5_clear_6113_on_pv/Left": {
+   "group": "X2",
+   "yolo_only": 51.482059282371296,
+   "his": 39.78159126365055,
+   "learned_Q": 58.65834633385335
+  },
+  "X2_sea5_clear_6113_on_pv/Right": {
+   "group": "X2",
+   "yolo_only": 49.29133858267716,
+   "his": 34.960629921259844,
+   "learned_Q": 51.338582677165356
+  },
+  "X2_sea5_clear_6229_on_pv/Left": {
+   "group": "X2",
+   "yolo_only": 51.38461538461539,
+   "his": 40.92307692307692,
+   "learned_Q": 50.0
+  },
+  "X2_sea5_clear_6229_on_pv/Right": {
+   "group": "X2",
+   "yolo_only": 51.17004680187207,
+   "his": 45.24180967238689,
+   "learned_Q": 53.042121684867396
+  },
+  "X3_sea4_dark_storm_6007_on_pv/Left": {
+   "group": "X3",
+   "yolo_only": 46.275752773375594,
+   "his": 27.892234548335974,
+   "learned_Q": 38.985736925515056
+  },
+  "X3_sea4_dark_storm_6007_on_pv/Right": {
+   "group": "X3",
+   "yolo_only": 49.920760697305866,
+   "his": 34.7068145800317,
+   "learned_Q": 39.3026941362916
+  },
+  "X3_sea4_dark_storm_6113_on_pv/Left": {
+   "group": "X3",
+   "yolo_only": 49.532710280373834,
+   "his": 37.53894080996885,
+   "learned_Q": 39.719626168224295
+  },
+  "X3_sea4_dark_storm_6113_on_pv/Right": {
+   "group": "X3",
+   "yolo_only": 48.75776397515528,
+   "his": 33.38509316770186,
+   "learned_Q": 39.59627329192546
+  },
+  "X3_sea4_dark_storm_6229_on_pv/Left": {
+   "group": "X3",
+   "yolo_only": 47.53846153846154,
+   "his": 35.69230769230769,
+   "learned_Q": 36.769230769230774
+  },
+  "X3_sea4_dark_storm_6229_on_pv/Right": {
+   "group": "X3",
+   "yolo_only": 51.15562403697997,
+   "his": 38.983050847457626,
+   "learned_Q": 36.82588597842835
+  },
+  "X4_sea4_heavy_rain_6007_on_pv/Left": {
+   "group": "X4",
+   "yolo_only": 46.80187207488299,
+   "his": 30.577223088923557,
+   "learned_Q": 42.27769110764431
+  },
+  "X4_sea4_heavy_rain_6007_on_pv/Right": {
+   "group": "X4",
+   "yolo_only": 79.16666666666666,
+   "his": 74.07407407407408,
+   "learned_Q": 78.24074074074075
+  },
+  "X4_sea4_heavy_rain_6113_on_pv/Left": {
+   "group": "X4",
+   "yolo_only": 53.73831775700935,
+   "his": 42.834890965732086,
+   "learned_Q": 56.38629283489096
+  },
+  "X4_sea4_heavy_rain_6113_on_pv/Right": {
+   "group": "X4",
+   "yolo_only": 51.23839009287926,
+   "his": 37.61609907120743,
+   "learned_Q": 49.84520123839009
+  },
+  "X4_sea4_heavy_rain_6229_on_pv/Left": {
+   "group": "X4",
+   "yolo_only": 50.46153846153846,
+   "his": 38.0,
+   "learned_Q": 43.69230769230769
+  },
+  "X4_sea4_heavy_rain_6229_on_pv/Right": {
+   "group": "X4",
+   "yolo_only": 59.86842105263158,
+   "his": 54.93421052631579,
+   "learned_Q": 59.539473684210535
+  },
+  "X5_sea3_dark_storm_6007_on_pv/Left": {
+   "group": "X5",
+   "yolo_only": 56.10510046367851,
+   "his": 36.01236476043277,
+   "learned_Q": 44.513137557959816
+  },
+  "X5_sea3_dark_storm_6007_on_pv/Right": {
+   "group": "X5",
+   "yolo_only": 59.68992248062015,
+   "his": 40.0,
+   "learned_Q": 48.52713178294574
+  },
+  "X5_sea3_dark_storm_6113_on_pv/Left": {
+   "group": "X5",
+   "yolo_only": 61.846153846153854,
+   "his": 48.92307692307693,
+   "learned_Q": 54.307692307692314
+  },
+  "X5_sea3_dark_storm_6113_on_pv/Right": {
+   "group": "X5",
+   "yolo_only": 56.414219474497685,
+   "his": 36.93972179289026,
+   "learned_Q": 46.67697063369397
+  },
+  "X5_sea3_dark_storm_6229_on_pv/Left": {
+   "group": "X5",
+   "yolo_only": 55.07692307692308,
+   "his": 42.0,
+   "learned_Q": 47.38461538461539
+  },
+  "X5_sea3_dark_storm_6229_on_pv/Right": {
+   "group": "X5",
+   "yolo_only": 55.53846153846153,
+   "his": 36.92307692307693,
+   "learned_Q": 37.69230769230769
+  }
+ },
+ "cases": {
+  "X1": {
+   "name": "Sea 4, clear",
+   "n": 6,
+   "yolo": 54.73847747281202,
+   "hand": 41.63645779388918,
+   "learned_Q": 54.609010875194194,
+   "better_than_hand": 5,
+   "p_vs_hand": 0.0625,
+   "better_than_yolo": 3,
+   "p_vs_yolo": 1.0,
+   "median_gain_vs_hand": 17.067624825461024,
+   "median_gain_vs_yolo": 0.0726516008908007
+  },
+  "X2": {
+   "name": "Sea 5, clear",
+   "n": 6,
+   "yolo": 49.25529135092762,
+   "hand": 37.73190488633394,
+   "learned_Q": 51.76378364253985,
+   "better_than_hand": 6,
+   "p_vs_hand": 0.03125,
+   "better_than_yolo": 5,
+   "p_vs_yolo": 0.09375,
+   "median_gain_vs_hand": 15.253340585174108,
+   "median_gain_vs_yolo": 1.9596594887417602
+  },
+  "X3": {
+   "name": "Sea 4 + dark storm",
+   "n": 6,
+   "yolo": 48.86924876527164,
+   "hand": 34.72835976085261,
+   "learned_Q": 38.523524824538605,
+   "better_than_hand": 5,
+   "p_vs_hand": 0.09375,
+   "better_than_yolo": 0,
+   "p_vs_yolo": 0.03125,
+   "median_gain_vs_hand": 3.3882824572576737,
+   "median_gain_vs_yolo": -10.215575336581903
+  },
+  "X4": {
+   "name": "Sea 4 + heavy rain",
+   "n": 6,
+   "yolo": 53.46886092287835,
+   "hand": 41.56179412713779,
+   "learned_Q": 51.274604711197156,
+   "better_than_hand": 6,
+   "p_vs_hand": 0.03125,
+   "better_than_yolo": 1,
+   "p_vs_yolo": 0.21875,
+   "median_gain_vs_hand": 8.696387855514223,
+   "median_gain_vs_yolo": -1.1595573902075387
+  },
+  "X5": {
+   "name": "Sea 3 + dark storm",
+   "n": 6,
+   "yolo": 57.44407302648496,
+   "hand": 40.13885317562355,
+   "learned_Q": 46.51581383389046,
+   "better_than_hand": 6,
+   "p_vs_hand": 0.03125,
+   "better_than_yolo": 0,
+   "p_vs_yolo": 0.03125,
+   "median_gain_vs_hand": 6.942694091071218,
+   "median_gain_vs_yolo": -10.450019769239063
+  },
+  "all": {
+   "name": "All extreme cases",
+   "n": 30,
+   "yolo": 52.74238825307709,
+   "hand": 39.06823580220255,
+   "learned_Q": 48.42366659468797,
+   "better_than_hand": 28,
+   "p_vs_hand": 3.5131524482033455e-06,
+   "better_than_yolo": 9,
+   "p_vs_yolo": 0.00577649287879467,
+   "median_gain_vs_hand": 8.725104353011329,
+   "median_gain_vs_yolo": -2.9586849108639264
+  }
+ }
+}

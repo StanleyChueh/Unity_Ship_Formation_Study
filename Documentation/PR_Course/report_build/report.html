@@ -1,0 +1,2206 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>PR Final Project: Proposal and Method</title>
+<style>
+@page { size: A4; margin: 17mm 17mm 18mm 17mm; @bottom-center { content: counter(page); font-size: 8pt; color: #52514e; } }
+body { font-family: 'Liberation Sans', 'Noto Sans CJK TC', sans-serif; font-size: 9.6pt; line-height: 1.42; color: #1a1a19; }
+h1 { font-size: 18pt; line-height: 1.2; margin: 0 0 4pt; color: #0b0b0b; }
+.sub { color: #52514e; font-size: 10pt; margin-bottom: 10pt; }
+h2 { font-size: 13.5pt; margin: 18pt 0 6pt; padding-bottom: 3pt; border-bottom: 1.5px solid #2a78d6; color: #0b0b0b; break-after: avoid; }
+h2.part { break-before: page; }
+h3 { font-size: 11pt; margin: 12pt 0 4pt; color: #0b0b0b; break-after: avoid; }
+p { margin: 0 0 6pt; } ul, ol { margin: 0 0 6pt; padding-left: 16pt; } li { margin-bottom: 2pt; }
+table { border-collapse: collapse; width: 100%; margin: 4pt 0 8pt; font-size: 8.6pt; break-inside: avoid; }
+th, td { border-bottom: 0.6px solid #d6d5d0; padding: 3pt 5pt; text-align: left; vertical-align: top; }
+th { background: #f3f2ef; font-weight: bold; }
+table.res td { text-align: right; white-space: nowrap; } table.res th { text-align: center; } th.rowh { text-align: left !important; background: none; font-weight: normal; }
+.fast { color: #52514e; }
+.box { background: #f3f6fb; border-left: 3px solid #2a78d6; padding: 6pt 9pt; margin: 6pt 0 9pt; break-inside: avoid; }
+.warn { background: #fbf4ef; border-left: 3px solid #eb6834; padding: 6pt 9pt; margin: 6pt 0 9pt; break-inside: avoid; }
+.eq { font-family: 'Liberation Serif', serif; font-size: 11pt; text-align: center; margin: 5pt 0 7pt; }
+.fig { text-align: center; margin: 6pt 0 2pt; break-inside: avoid; } .fig svg { max-width: 100%; height: auto; }
+.cap { font-size: 8.4pt; color: #52514e; margin: 0 0 10pt; break-before: avoid; }
+.pipe { display: flex; align-items: stretch; justify-content: space-between; margin: 8pt 0 4pt; gap: 3pt; break-inside: avoid; }
+.pipe div.n { border: 1px solid #b9b8b2; border-radius: 4pt; padding: 5pt 4pt; text-align: center; font-size: 8.4pt; flex: 1; background: #fff; }
+.pipe div.n.pr { border: 1.6px solid #2a78d6; background: #f3f6fb; }
+.pipe div.a { align-self: center; color: #52514e; font-size: 12pt; }
+.tag { display: inline-block; font-size: 7.4pt; color: #fff; background: #2a78d6; border-radius: 3pt; padding: 0 4pt; margin-top: 2pt; }
+.small { font-size: 8.6pt; color: #52514e; }
+.cols { display: flex; gap: 12pt; } .cols > div { flex: 1; }
+</style></head><body>
+
+<h1>Learning the Tracker from Data: Bayesian Decision and Maximum-Likelihood Methods for Camera-Based Target Tracking on a Drone and an Unmanned Surface Vessel</h1>
+<div class="sub">Pattern Recognition, Department of Electrical Engineering, National Taipei University of Technology<br>
+Final project: midterm proposal (Question 1) and proposed method for the final presentation<br>
+Group members: ______________ (USV platform) &nbsp;·&nbsp; ______________ (drone platform) &nbsp;·&nbsp; 4 November 2026</div>
+
+<div class="box"><b>Summary.</b> Both members of our group track one target with a camera, using the same pipeline:
+YOLOv8 finds the target, Lucas-Kanade optical flow moves the box between detections, and a Kalman filter combines them. One
+platform is a drone; the other is a fleet of unmanned surface vessels (USVs) that keep formation by following a leader boat.
+Both break down when the target's box moves up and down quickly in the image. On the drone the target climbs and drops; on
+the USV the camera itself pitches in waves. The current tracker depends on hand-tuned constants. We replace them with course
+methods: <b>maximum-likelihood estimation</b> (Ch.&nbsp;3-1) of the filter's noise, a <b>minimum-risk Bayes rule</b> (Ch.&nbsp;2)
+for accepting or rejecting each detection, and <b>PCA, Fisher LDA and the Hughes effect</b> (Ch.&nbsp;3-2, Ch.&nbsp;1) for
+choosing features. A first offline test already shows the main effect. Choosing the process noise by maximum likelihood turns
+the drone tracker from worse than raw YOLO on the boat (73% vs 85% of frames tracked well in clear water) into better than it
+(88%). On the drone it lifts accuracy from 47–57% to 72–82% when the detector is slow.</div>
+
+<h2>Part I. Midterm proposal (Question 1)</h2>
+
+<h3>1. Topic</h3>
+<p><b>Problem.</b> A camera tracker has to decide two things in every frame: <i>which</i> detected box is the target, and
+<i>how much</i> to trust it compared with its own prediction. In our current code, both decisions use hand-tuned constants: a
+distance gate (<code>GATE = 1.5</code>), a size-ratio window (0.25 to 5), measurement noise R = 60·(0.5/confidence)², and a fixed
+process noise Q that was "raised by hand so the filter keeps up when the drone accelerates". These values were tuned for a 30 fps,
+1080p drone video. They have no basis in data and do not carry over to another platform.</p>
+<p><b>Shared difficulty.</b> Fast vertical motion of the target's box. On our USV logs, the share of frames where YOLO misses the
+leader grows from 1.8% to 14.7% as the box's vertical speed rises from 0–2 to 20–40 px per step. The share where YOLO labels the
+wrong box as the leader grows from 0.5% to 7.6% (Figure 1).</p>
+<p><b>Idea.</b> Treat each hand-tuned decision as a pattern recognition problem and learn it from labelled data:</p>
+<table><tr><th style="width:30%">Hand-tuned part</th><th>Replacement from the course</th><th style="width:16%">Chapter</th></tr>
+<tr><td>Measurement noise R</td><td>Gaussian maximum-likelihood estimate of the detection error covariance, per axis and per confidence level</td><td>Ch.&nbsp;3-1</td></tr>
+<tr><td>Process noise Q</td><td>Maximum-likelihood estimate: closed form from ground-truth trajectories, or by maximising the likelihood of the filter's prediction errors</td><td>Ch.&nbsp;3-1</td></tr>
+<tr><td>Gate and ranking score</td><td>Minimum-risk Bayes classifier (target, other object, clutter) with Gaussian class-conditional densities estimated by maximum likelihood</td><td>Ch.&nbsp;2, 3-1</td></tr>
+<tr><td>Choice of features</td><td>PCA, Fisher LDA projection and an experimental Hughes curve (accuracy against number of features and training-set size)</td><td>Ch.&nbsp;3-2, Ch.&nbsp;1</td></tr>
+<tr><td>Evaluation</td><td>Design cycle, ROC curves, held-out test data</td><td>Ch.&nbsp;1</td></tr></table>
+
+<h3>2. Related papers</h3>
+<ol class="small">
+<li>R. O. Duda, P. E. Hart, D. G. Stork, <i>Pattern Classification</i>, 2nd ed., Wiley, 2001. Course textbook: Bayes decision theory, MLE, PCA and LDA.</li>
+<li>G. F. Hughes, "On the mean accuracy of statistical pattern recognizers," <i>IEEE Trans. Inf. Theory</i>, IT-14, 1968. Accuracy peaks, then falls, as dimension grows.</li>
+<li>R. A. Fisher, "The use of multiple measurements in taxonomic problems," <i>Annals of Eugenics</i>, 1936. Fisher's linear discriminant.</li>
+<li>R. E. Kalman, "A new approach to linear filtering and prediction problems," <i>J. Basic Engineering</i>, 1960. The Kalman filter as recursive Bayesian estimation.</li>
+<li>R. K. Mehra, "On the identification of variances and adaptive Kalman filtering," <i>IEEE Trans. Automatic Control</i>, 1970. Maximum-likelihood estimation of Q and R from innovations.</li>
+<li>B. D. Lucas, T. Kanade, "An iterative image registration technique with an application to stereo vision," IJCAI 1981. The optical flow used on both platforms.</li>
+<li>Z. Kalal, K. Mikolajczyk, J. Matas, "Forward-backward error: automatic detection of tracking failures," ICPR 2010. The flow check in our tracker.</li>
+<li>Y. Bar-Shalom, E. Tse, "Tracking in a cluttered environment with probabilistic data association," <i>Automatica</i>, 1975. Validation gates under clutter.</li>
+<li>H. A. P. Blom, Y. Bar-Shalom, "The interacting multiple model algorithm for systems with Markovian switching coefficients," <i>IEEE Trans. Automatic Control</i>, 1988. Switching between motion models.</li>
+<li>A. Bewley et al., "Simple online and realtime tracking," ICIP 2016. A detector combined with a Kalman filter and an association step.</li>
+<li>C. Guo et al., "On calibration of modern neural networks," ICML 2017. A CNN's confidence score is not a calibrated posterior probability.</li>
+</ol>
+
+<h3>3. Project tasks and schedule</h3>
+<table><tr><th style="width:4%">#</th><th style="width:28%">Task</th><th>Work</th><th style="width:13%">Status</th></tr>
+<tr><td>T1</td><td>Labelled data</td><td>USV: 652 logged runs with exact simulator ground truth. Drone: Grounding DINO labels for two test videos, checked by eye.</td><td>Done</td></tr>
+<tr><td>T2</td><td>Detection errors against motion</td><td>Missed and wrong boxes against the target's vertical image speed, on both platforms</td><td>USV done; drone first pass</td></tr>
+<tr><td>T3</td><td>MLE of R</td><td>Error covariance per axis and confidence level; check the Gaussian assumption with Q-Q plots</td><td>Done; Q-Q to do</td></tr>
+<tr><td>T4</td><td>MLE of Q</td><td>(a) closed form from ground truth (textbook); (b) innovation likelihood (no ground truth needed)</td><td>(b) done; (a) to do</td></tr>
+<tr><td>T5</td><td>Bayes gate</td><td>Minimum-risk rule; sweep the loss ratio λ<sub>FA</sub>/λ<sub>miss</sub>; ROC curves; re-acquire the target after a run of rejections</td><td>First version done</td></tr>
+<tr><td>T6</td><td>PCA, LDA, Hughes</td><td>2-D Fisher projection of the three classes; PCA explained variance; accuracy against number of features d for n = 20 to 10,000 training samples</td><td>To do</td></tr>
+<tr><td>T7</td><td>Tracking replay</td><td>All tracker versions on both platforms, scored against ground truth</td><td>Done</td></tr>
+<tr><td>T8</td><td>Closed loop (optional)</td><td>Learned tracker inside the USV formation simulator, huge-wave laps; live drone test if time allows</td><td>Optional</td></tr></table>
+<table><tr><th style="width:12%">Week</th><th style="width:22%">Dates</th><th>Work</th></tr>
+<tr><td>W1</td><td>Nov 5 – Nov 11</td><td>Proposal; 3-minute proposal talk (Nov 11)</td></tr>
+<tr><td>W2</td><td>Nov 12 – Nov 18</td><td>T4(a) closed-form Q; T3 Q-Q plots; a latency-aware R fit</td></tr>
+<tr><td>W3</td><td>Nov 19 – Nov 25</td><td>T5 loss sweep, ROC, re-acquisition</td></tr>
+<tr><td>W4</td><td>Nov 26 – Dec 2</td><td>T6 PCA, LDA, Hughes curve</td></tr>
+<tr><td>W5</td><td>Dec 3 – Dec 9</td><td>T2 drone motion analysis with smoothed ground truth; more drone test videos</td></tr>
+<tr><td>W6</td><td>Dec 10 – Dec 16</td><td>T8 optional closed-loop runs</td></tr>
+<tr><td>W7</td><td>Dec 17 – Dec 23</td><td>Report, figures, comparison videos</td></tr>
+<tr><td>W8</td><td>Dec 24 → final</td><td>Rehearsal; spare time</td></tr></table>
+<p class="small">The final presentation date is still to be confirmed; we will move the last two weeks to fit it.</p>
+
+<h3>4. Final product</h3>
+<ol><li><b>A shared Python module</b> with three parts: a Bayes gate, a noise model (R and Q learned by MLE), and a feature
+analysis (PCA and LDA). It replaces the hand-tuned constants in both trackers.</li>
+<li><b>Two labelled datasets</b>: USV candidate boxes with exact ground truth in six weather conditions, and drone videos with
+checked pseudo ground truth.</li>
+<li><b>A reproducible evaluation</b>: a deterministic replay of the tracker on both platforms, with all figures and tables in this report.</li>
+<li><b>Side-by-side videos</b>: YOLO only against the learned tracker, for the drone and for a huge-wave boat run.</li></ol>
+
+<h3>5. Project report: components and items</h3>
+<p>Abstract; introduction (fast vertical image motion: a moving target on the drone, a moving camera on the USV); related work;
+problem formulation (classes, feature vector, loss matrix, the minimum-risk rule derived as a likelihood-ratio inequality);
+method (MLE of R and Q with derivations, Bayes gate, PCA and LDA); data and ground truth; results on each platform, then
+compared; discussion (when the Gaussian assumption fails, dimension against sample size, limitations); conclusion and future
+work; references; appendix with code and reproduction steps.</p>
+
+<h3>6. Project presentation (about 15 minutes, both members)</h3>
+<p>Motivation with two video clips, drone and boat (2 min) → the shared pipeline and its hand-tuned parts (2 min) → the
+pattern recognition formulation linked to the lecture slides (3 min) → USV results (3 min) → drone results (3 min) →
+cross-platform conclusion and questions (2 min). Details are in Part IV.</p>
+
+<h2 class="part">Part II. Proposed method</h2>
+
+<h3>II.1 System and notation</h3>
+<div class="pipe">
+<div class="n">Camera frame</div><div class="a">→</div>
+<div class="n">YOLOv8<br>candidate boxes</div><div class="a">→</div>
+<div class="n pr">Accept or reject<br><span class="tag">Bayes rule, Ch. 2</span></div><div class="a">→</div>
+<div class="n pr">Kalman filter + optical flow<br><span class="tag">MLE of R and Q, Ch. 3-1</span></div><div class="a">→</div>
+<div class="n">Target box<br>→ controller</div></div>
+<p class="cap">Figure 0. The shared tracker. Blue boxes are where the course methods replace hand-tuned constants.</p>
+<p>The filter state is x = (c<sub>x</sub>, c<sub>y</sub>, w, h, v<sub>x</sub>, v<sub>y</sub>, v<sub>w</sub>, v<sub>h</sub>)<sup>t</sup>,
+with a constant-velocity transition F. A measurement z = Hx + v (a YOLO box or a flow-shifted box) has noise v ~ N(0, R). The
+motion model is x<sub>k+1</sub> = Fx<sub>k</sub> + w<sub>k</sub>, with w<sub>k</sub> ~ N(0, Q). Errors are measured in units of
+box size, so one model works for both near and far targets.</p>
+
+<h3>II.2 Method 1: maximum-likelihood estimate of the measurement noise R (Ch. 3-1)</h3>
+<p>For each training detection that matches the true box, the error is e<sub>k</sub> = (z<sub>k</sub> − z<sub>k</sub><sup>true</sup>)/size.
+With e ~ N(μ, Σ), the slides' Gaussian case with unknown μ and Σ gives the closed-form MLE:</p>
+<div class="eq">μ̂ = (1/n) Σ<sub>k</sub> e<sub>k</sub>, &nbsp;&nbsp; Σ̂ = (1/n) Σ<sub>k</sub> (e<sub>k</sub> − μ̂)(e<sub>k</sub> − μ̂)<sup>t</sup></div>
+<p>We fit Σ̂ separately for the horizontal and vertical axes and for each YOLO-confidence bin. This tests the drone code's
+assumption that a single variance, scaled by confidence, holds on both axes.</p>
+
+<h3>II.3 Method 2: maximum-likelihood estimate of the process noise Q (Ch. 3-1)</h3>
+<p><b>(a) With ground truth: closed form, as in the textbook.</b> From the true box trajectory, the process residuals are
+w<sub>k</sub> = x<sub>k+1</sub> − Fx<sub>k</sub>, and the MLE is Q̂ = (1/n) Σ<sub>k</sub> w<sub>k</sub>w<sub>k</sub><sup>t</sup>.
+This is the same derivation as for R, applied to the motion instead of the measurement.</p>
+<p><b>(b) Without ground truth: innovation likelihood</b> (Mehra, 1970). For a correct model, the innovations
+ν<sub>k</sub> = z<sub>k</sub> − Hx̂<sub>k|k−1</sub> are independent, with ν<sub>k</sub> ~ N(0, S<sub>k</sub>), where S<sub>k</sub> = HP<sub>k|k−1</sub>H<sup>t</sup> + R. So we choose Q to maximise</p>
+<div class="eq">ℓ(Q) = Σ<sub>k</sub> ln N(ν<sub>k</sub>; 0, S<sub>k</sub>(Q)) = −½ Σ<sub>k</sub> [ ν<sub>k</sub><sup>t</sup>S<sub>k</sub><sup>−1</sup>ν<sub>k</sub> + ln|S<sub>k</sub>| + d ln 2π ]</div>
+<p>This is the Ch. 3-1 principle: the observed samples are the innovations, and Q is the parameter. Because S<sub>k</sub> depends
+on Q through the filter's recursion, there is no closed-form solution, so we maximise over a grid. Method (b) is what runs on a
+real drone or boat. Method (a) is the textbook check when ground truth exists. The final presentation will compare the two.</p>
+
+<h3>II.4 Method 3: minimum-risk Bayes rule for accepting a detection (Ch. 2)</h3>
+<p>Each candidate box gives a feature vector <b>x</b>: YOLO confidence, Mahalanobis distance to the predicted box under the
+filter's covariance, log area ratio and log aspect ratio. Classes: ω<sub>1</sub> = target, ω<sub>2</sub> = not the target.
+λ<sub>ij</sub> is the loss of deciding ω<sub>i</sub> when the truth is ω<sub>j</sub>. Accepting a false box (λ<sub>12</sub>)
+costs more than rejecting a true one (λ<sub>21</sub>), because the filter can coast on its prediction for a few frames.
+Minimising the conditional risk R(α<sub>i</sub>|x) = Σ<sub>j</sub> λ<sub>ij</sub>P(ω<sub>j</sub>|x) gives the rule: accept if</p>
+<div class="eq">p(x|ω<sub>1</sub>) / p(x|ω<sub>2</sub>) &gt; [(λ<sub>12</sub> − λ<sub>22</sub>) / (λ<sub>21</sub> − λ<sub>11</sub>)] · P(ω<sub>2</sub>) / P(ω<sub>1</sub>)</div>
+<p>The class-conditional densities p(x|ω<sub>i</sub>) are Gaussians fitted by MLE, as in Method 1. The priors P(ω<sub>i</sub>)
+are estimated per platform and per condition. Distance is measured with the filter's own covariance, so the acceptance region
+widens automatically while the tracker coasts. This replaces the hand-tuned gate growth of (1 + 0.15·misses).</p>
+
+<h3>II.5 Method 4: feature analysis with PCA, Fisher LDA and the Hughes effect (Ch. 3-2, Ch. 1)</h3>
+<p>Project the candidate features of the three classes (target, other object, clutter) onto the 2-D Fisher subspace (c − 1 = 2
+dimensions) for each condition, and show PCA's explained variance. Then measure Bayes-gate accuracy against the number of
+features d (1 to 9) for training sizes n = 20, 100, 1,000 and 10,000. This reproduces the Hughes peaking effect on our own data
+and justifies the final feature set.</p>
+
+<h3>II.6 Evaluation protocol</h3>
+<ul>
+<li><b>Deterministic replay.</b> His real-time tracker is replayed frame by frame. A YOLO result requested at frame i arrives
+at frame i + L. L = 1 matches his GPU (YOLO takes 11 ms; a frame lasts 33 ms); L = 3 imitates a slower onboard computer. On the
+USV, L is one 100 ms control step. The replay reproduces his reported YOLO detection rate of 83% on testv4.</li>
+<li><b>Ground truth.</b> USV: the simulator's true leader box. Drone: Grounding DINO (2 prompts × horizontal flip = 4 opinions,
+fused with his own labelling rule, <i>without</i> YOLO as an opinion so the labels are independent of the model under test),
+checked by eye on contact sheets.</li>
+<li><b>Training and test data are separate.</b> Drone: trained on one video, tested on the other. USV: runs split by
+random seed into two folds.</li>
+<li><b>Measures.</b> Share of frames with IoU ≥ 0.5 against the true box; the same on the 20% of frames with the fastest
+vertical motion; wrong-target frames; jitter.</li></ul>
+
+<h2>Part III. Preliminary results</h2>
+
+<h3>III.1 Fast vertical motion breaks detection on the USV</h3>
+<div class="fig"><svg xmlns:xlink="http://www.w3.org/1999/xlink" width="363.784531pt" height="189.584469pt" viewBox="0 0 363.784531 189.584469" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-11-04T12:41:35.446131</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 189.584469 
+L 363.784531 189.584469 
+L 363.784531 -0 
+L 0 -0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 44.104531 154.605094 
+L 356.584531 154.605094 
+L 356.584531 10.461094 
+L 44.104531 10.461094 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <defs>
+       <path id="ma63a8e54b7" d="M 0 0 
+L 0 3.5 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#ma63a8e54b7" x="81.980895" y="154.605094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_1">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="81.980895" y="168.127281" transform="rotate(-0 81.980895 168.127281)">0-2</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_2">
+      <g>
+       <use xlink:href="#ma63a8e54b7" x="141.162713" y="154.605094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_2">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="141.162713" y="168.127281" transform="rotate(-0 141.162713 168.127281)">2-5</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_3">
+      <g>
+       <use xlink:href="#ma63a8e54b7" x="200.344531" y="154.605094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_3">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="200.344531" y="168.127281" transform="rotate(-0 200.344531 168.127281)">5-10</text>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_4">
+      <g>
+       <use xlink:href="#ma63a8e54b7" x="259.526349" y="154.605094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_4">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="259.526349" y="168.127281" transform="rotate(-0 259.526349 168.127281)">10-20</text>
+     </g>
+    </g>
+    <g id="xtick_5">
+     <g id="line2d_5">
+      <g>
+       <use xlink:href="#ma63a8e54b7" x="318.708168" y="154.605094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_5">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="318.708168" y="168.127281" transform="rotate(-0 318.708168 168.127281)">20-40</text>
+     </g>
+    </g>
+    <g id="text_6">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="200.344531" y="180.516969" transform="rotate(-0 200.344531 180.516969)">Vertical speed of the leader's box (px per 0.1 s step)</text>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_6">
+      <path d="M 44.104531 154.605094 
+L 356.584531 154.605094 
+" clip-path="url(#p42b24c53ec)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_7">
+      <defs>
+       <path id="mfc2b0ab928" d="M 0 0 
+L -3.5 0 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#mfc2b0ab928" x="44.104531" y="154.605094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_7">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="37.104531" y="157.866187" transform="rotate(-0 37.104531 157.866187)">0.0</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_8">
+      <path d="M 44.104531 134.013094 
+L 356.584531 134.013094 
+" clip-path="url(#p42b24c53ec)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_9">
+      <g>
+       <use xlink:href="#mfc2b0ab928" x="44.104531" y="134.013094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_8">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="37.104531" y="137.274187" transform="rotate(-0 37.104531 137.274187)">2.5</text>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_10">
+      <path d="M 44.104531 113.421094 
+L 356.584531 113.421094 
+" clip-path="url(#p42b24c53ec)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_11">
+      <g>
+       <use xlink:href="#mfc2b0ab928" x="44.104531" y="113.421094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_9">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="37.104531" y="116.682187" transform="rotate(-0 37.104531 116.682187)">5.0</text>
+     </g>
+    </g>
+    <g id="ytick_4">
+     <g id="line2d_12">
+      <path d="M 44.104531 92.829094 
+L 356.584531 92.829094 
+" clip-path="url(#p42b24c53ec)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_13">
+      <g>
+       <use xlink:href="#mfc2b0ab928" x="44.104531" y="92.829094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_10">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="37.104531" y="96.090187" transform="rotate(-0 37.104531 96.090187)">7.5</text>
+     </g>
+    </g>
+    <g id="ytick_5">
+     <g id="line2d_14">
+      <path d="M 44.104531 72.237094 
+L 356.584531 72.237094 
+" clip-path="url(#p42b24c53ec)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_15">
+      <g>
+       <use xlink:href="#mfc2b0ab928" x="44.104531" y="72.237094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_11">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="37.104531" y="75.498187" transform="rotate(-0 37.104531 75.498187)">10.0</text>
+     </g>
+    </g>
+    <g id="ytick_6">
+     <g id="line2d_16">
+      <path d="M 44.104531 51.645094 
+L 356.584531 51.645094 
+" clip-path="url(#p42b24c53ec)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_17">
+      <g>
+       <use xlink:href="#mfc2b0ab928" x="44.104531" y="51.645094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_12">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="37.104531" y="54.906187" transform="rotate(-0 37.104531 54.906187)">12.5</text>
+     </g>
+    </g>
+    <g id="ytick_7">
+     <g id="line2d_18">
+      <path d="M 44.104531 31.053094 
+L 356.584531 31.053094 
+" clip-path="url(#p42b24c53ec)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_19">
+      <g>
+       <use xlink:href="#mfc2b0ab928" x="44.104531" y="31.053094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_13">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="37.104531" y="34.314187" transform="rotate(-0 37.104531 34.314187)">15.0</text>
+     </g>
+    </g>
+    <g id="ytick_8">
+     <g id="line2d_20">
+      <path d="M 44.104531 10.461094 
+L 356.584531 10.461094 
+" clip-path="url(#p42b24c53ec)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_21">
+      <g>
+       <use xlink:href="#mfc2b0ab928" x="44.104531" y="10.461094" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_14">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="37.104531" y="13.722187" transform="rotate(-0 37.104531 13.722187)">17.5</text>
+     </g>
+    </g>
+    <g id="text_15">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="13.722188" y="82.533094" transform="rotate(-90 13.722188 82.533094)">% of frames</text>
+    </g>
+   </g>
+   <g id="patch_3">
+    <path d="M 58.308168 154.605094 
+L 81.980895 154.605094 
+L 81.980895 139.53175 
+L 58.308168 139.53175 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 117.489986 154.605094 
+L 141.162713 154.605094 
+L 141.162713 138.049126 
+L 117.489986 138.049126 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 176.671804 154.605094 
+L 200.344531 154.605094 
+L 200.344531 133.76599 
+L 176.671804 133.76599 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 235.853622 154.605094 
+L 259.526349 154.605094 
+L 259.526349 116.221606 
+L 235.853622 116.221606 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 295.03544 154.605094 
+L 318.708168 154.605094 
+L 318.708168 33.194662 
+L 295.03544 33.194662 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 81.980895 154.605094 
+L 105.653622 154.605094 
+L 105.653622 150.321958 
+L 81.980895 150.321958 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 141.162713 154.605094 
+L 164.83544 154.605094 
+L 164.83544 149.498278 
+L 141.162713 149.498278 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 200.344531 154.605094 
+L 224.017259 154.605094 
+L 224.017259 147.933286 
+L 200.344531 147.933286 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_11">
+    <path d="M 259.526349 154.605094 
+L 283.199077 154.605094 
+L 283.199077 138.70807 
+L 259.526349 138.70807 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_12">
+    <path d="M 318.708168 154.605094 
+L 342.380895 154.605094 
+L 342.380895 92.334886 
+L 318.708168 92.334886 
+z
+" clip-path="url(#p42b24c53ec)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_13">
+    <path d="M 44.104531 154.605094 
+L 44.104531 10.461094 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_14">
+    <path d="M 44.104531 154.605094 
+L 356.584531 154.605094 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="text_16">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="70.144531" y="129.84245" transform="rotate(-0 70.144531 129.84245)">1.8</text>
+   </g>
+   <g id="text_17">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="129.326349" y="128.359826" transform="rotate(-0 129.326349 128.359826)">2.0</text>
+   </g>
+   <g id="text_18">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="188.508168" y="124.07669" transform="rotate(-0 188.508168 124.07669)">2.5</text>
+   </g>
+   <g id="text_19">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="247.689986" y="106.532306" transform="rotate(-0 247.689986 106.532306)">4.7</text>
+   </g>
+   <g id="text_20">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="306.871804" y="23.505362" transform="rotate(-0 306.871804 23.505362)">14.7</text>
+   </g>
+   <g id="text_21">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="93.817259" y="140.632658" transform="rotate(-0 93.817259 140.632658)">0.5</text>
+   </g>
+   <g id="text_22">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="152.999077" y="139.808978" transform="rotate(-0 152.999077 139.808978)">0.6</text>
+   </g>
+   <g id="text_23">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="212.180895" y="138.243986" transform="rotate(-0 212.180895 138.243986)">0.8</text>
+   </g>
+   <g id="text_24">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="271.362713" y="129.01877" transform="rotate(-0 271.362713 129.01877)">1.9</text>
+   </g>
+   <g id="text_25">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="330.544531" y="82.645586" transform="rotate(-0 330.544531 82.645586)">7.6</text>
+   </g>
+   <g id="legend_1">
+    <g id="patch_15">
+     <path d="M 52.204531 25.083281 
+L 70.204531 25.083281 
+L 70.204531 18.783281 
+L 52.204531 18.783281 
+z
+" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </g>
+    <g id="text_26">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="77.404531" y="25.083281" transform="rotate(-0 77.404531 25.083281)">Leader missed</text>
+    </g>
+    <g id="patch_16">
+     <path d="M 52.204531 37.972969 
+L 70.204531 37.972969 
+L 70.204531 31.672969 
+L 52.204531 31.672969 
+z
+" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </g>
+    <g id="text_27">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="77.404531" y="37.972969" transform="rotate(-0 77.404531 37.972969)">Wrong box labelled leader</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p42b24c53ec">
+   <rect x="44.104531" y="10.461094" width="312.48" height="144.144"/>
+  </clipPath>
+ </defs>
+</svg>
+</div>
+<p class="cap">Figure 1. USV, weather-trained YOLO, 259,000 frames. Both error types rise steeply once the box moves more than
+10 px per step. In huge waves the median vertical speed doubles (6 vs 3 px per step).</p>
+<p>On the drone videos there is no clear trend: misses stay between 7% and 13% at every speed. Drone misses cluster on hard
+backgrounds instead, such as plants and the white tiled wall in IMG_7888. The per-frame speed is also noisy because the
+pseudo ground truth jitters. Smoothing and normalising by box size is planned (T2).</p>
+
+<h3>III.2 MLE of R: the drone code's noise model is wrong on the vertical axis</h3>
+<div class="fig"><svg xmlns:xlink="http://www.w3.org/1999/xlink" width="363.819687pt" height="180.779375pt" viewBox="0 0 363.819687 180.779375" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-11-04T12:41:35.573528</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 180.779375 
+L 363.819687 180.779375 
+L 363.819687 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 44.139688 145.8 
+L 356.619688 145.8 
+L 356.619688 7.2 
+L 44.139688 7.2 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <path d="M 62.888488 145.8 
+L 62.888488 7.2 
+" clip-path="url(#pdfd00e709d)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_2">
+      <defs>
+       <path id="m8cfa157d62" d="M 0 0 
+L 0 3.5 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#m8cfa157d62" x="62.888488" y="145.8" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_1">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="62.888488" y="159.322188" transform="rotate(-0 62.888488 159.322188)">0.25-0.40</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_3">
+      <path d="M 125.384488 145.8 
+L 125.384488 7.2 
+" clip-path="url(#pdfd00e709d)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_4">
+      <g>
+       <use xlink:href="#m8cfa157d62" x="125.384488" y="145.8" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_2">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="125.384488" y="159.322188" transform="rotate(-0 125.384488 159.322188)">0.40-0.55</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_5">
+      <path d="M 187.880488 145.8 
+L 187.880488 7.2 
+" clip-path="url(#pdfd00e709d)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_6">
+      <g>
+       <use xlink:href="#m8cfa157d62" x="187.880488" y="145.8" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_3">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="187.880488" y="159.322188" transform="rotate(-0 187.880488 159.322188)">0.55-0.70</text>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_7">
+      <path d="M 250.376488 145.8 
+L 250.376488 7.2 
+" clip-path="url(#pdfd00e709d)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_8">
+      <g>
+       <use xlink:href="#m8cfa157d62" x="250.376488" y="145.8" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_4">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="250.376488" y="159.322188" transform="rotate(-0 250.376488 159.322188)">0.70-0.80</text>
+     </g>
+    </g>
+    <g id="xtick_5">
+     <g id="line2d_9">
+      <path d="M 312.872488 145.8 
+L 312.872488 7.2 
+" clip-path="url(#pdfd00e709d)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_10">
+      <g>
+       <use xlink:href="#m8cfa157d62" x="312.872488" y="145.8" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_5">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="312.872488" y="159.322188" transform="rotate(-0 312.872488 159.322188)">0.80-0.90</text>
+     </g>
+    </g>
+    <g id="text_6">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="200.379688" y="171.711875" transform="rotate(-0 200.379688 171.711875)">YOLO confidence</text>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_11">
+      <path d="M 44.139688 115.792155 
+L 356.619688 115.792155 
+" clip-path="url(#pdfd00e709d)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_12">
+      <defs>
+       <path id="me633393bd7" d="M 0 0 
+L -3.5 0 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#me633393bd7" x="44.139688" y="115.792155" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_7">
+      <!-- $\mathdefault{10^{-3}}$ -->
+      <g style="fill: #52514e" transform="translate(19.589688 119.053249)">
+       <text>
+        <tspan x="0" y="-0.278125" style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e">1</tspan>
+        <tspan x="5.005371" y="-0.278125" style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e">0</tspan>
+        <tspan x="10.093867" y="-3.603125" style="font-size: 6.3px; font-family: 'Liberation Sans'; fill: #52514e">−</tspan>
+        <tspan x="13.772969" y="-3.603125" style="font-size: 6.3px; font-family: 'Liberation Sans'; fill: #52514e">3</tspan>
+       </text>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_13">
+      <path d="M 44.139688 37.0364 
+L 356.619688 37.0364 
+" clip-path="url(#pdfd00e709d)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_14">
+      <g>
+       <use xlink:href="#me633393bd7" x="44.139688" y="37.0364" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_8">
+      <!-- $\mathdefault{10^{-2}}$ -->
+      <g style="fill: #52514e" transform="translate(19.589688 40.297494)">
+       <text>
+        <tspan x="0" y="-0.278125" style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e">1</tspan>
+        <tspan x="5.005371" y="-0.278125" style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e">0</tspan>
+        <tspan x="10.093867" y="-3.603125" style="font-size: 6.3px; font-family: 'Liberation Sans'; fill: #52514e">−</tspan>
+        <tspan x="13.772969" y="-3.603125" style="font-size: 6.3px; font-family: 'Liberation Sans'; fill: #52514e">2</tspan>
+       </text>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_15">
+      <defs>
+       <path id="m314a26f74d" d="M 0 0 
+L -2 0 
+" style="stroke: #52514e; stroke-width: 0.6"/>
+      </defs>
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="139.5" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_4">
+     <g id="line2d_16">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="133.264021" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_5">
+     <g id="line2d_17">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="127.991576" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_6">
+     <g id="line2d_18">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="123.424377" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_7">
+     <g id="line2d_19">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="119.395821" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_8">
+     <g id="line2d_20">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="92.084311" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_9">
+     <g id="line2d_21">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="78.21611" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_10">
+     <g id="line2d_22">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="68.376466" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_11">
+     <g id="line2d_23">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="60.744245" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_12">
+     <g id="line2d_24">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="54.508266" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_13">
+     <g id="line2d_25">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="49.235821" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_14">
+     <g id="line2d_26">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="44.668621" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_15">
+     <g id="line2d_27">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="40.640066" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="ytick_16">
+     <g id="line2d_28">
+      <g>
+       <use xlink:href="#m314a26f74d" x="44.139688" y="13.328555" style="fill: #52514e; stroke: #52514e; stroke-width: 0.6"/>
+      </g>
+     </g>
+    </g>
+    <g id="text_9">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="13.722188" y="76.5" transform="rotate(-90 13.722188 76.5)">MLE variance (box heights²)</text>
+    </g>
+   </g>
+   <g id="line2d_29">
+    <path d="M 62.888488 32.256096 
+L 125.384488 31.086642 
+L 187.880488 72.943665 
+L 250.376488 109.556176 
+L 312.872488 139.5 
+" clip-path="url(#pdfd00e709d)" style="fill: none; stroke: #2a78d6; stroke-width: 2; stroke-linecap: square"/>
+    <defs>
+     <path id="m464db55dd6" d="M 0 3 
+C 0.795609 3 1.55874 2.683901 2.12132 2.12132 
+C 2.683901 1.55874 3 0.795609 3 0 
+C 3 -0.795609 2.683901 -1.55874 2.12132 -2.12132 
+C 1.55874 -2.683901 0.795609 -3 0 -3 
+C -0.795609 -3 -1.55874 -2.683901 -2.12132 -2.12132 
+C -2.683901 -1.55874 -3 -0.795609 -3 0 
+C -3 0.795609 -2.683901 1.55874 -2.12132 2.12132 
+C -1.55874 2.683901 -0.795609 3 0 3 
+z
+" style="stroke: #2a78d6"/>
+    </defs>
+    <g clip-path="url(#pdfd00e709d)">
+     <use xlink:href="#m464db55dd6" x="62.888488" y="32.256096" style="fill: #2a78d6; stroke: #2a78d6"/>
+     <use xlink:href="#m464db55dd6" x="125.384488" y="31.086642" style="fill: #2a78d6; stroke: #2a78d6"/>
+     <use xlink:href="#m464db55dd6" x="187.880488" y="72.943665" style="fill: #2a78d6; stroke: #2a78d6"/>
+     <use xlink:href="#m464db55dd6" x="250.376488" y="109.556176" style="fill: #2a78d6; stroke: #2a78d6"/>
+     <use xlink:href="#m464db55dd6" x="312.872488" y="139.5" style="fill: #2a78d6; stroke: #2a78d6"/>
+    </g>
+   </g>
+   <g id="line2d_30">
+    <path d="M 62.888488 13.5 
+L 125.384488 20.747672 
+L 187.880488 19.908287 
+L 250.376488 17.507078 
+L 312.872488 26.268868 
+" clip-path="url(#pdfd00e709d)" style="fill: none; stroke: #eb6834; stroke-width: 2; stroke-linecap: square"/>
+    <defs>
+     <path id="mf1f81a1e4a" d="M 0 3 
+C 0.795609 3 1.55874 2.683901 2.12132 2.12132 
+C 2.683901 1.55874 3 0.795609 3 0 
+C 3 -0.795609 2.683901 -1.55874 2.12132 -2.12132 
+C 1.55874 -2.683901 0.795609 -3 0 -3 
+C -0.795609 -3 -1.55874 -2.683901 -2.12132 -2.12132 
+C -2.683901 -1.55874 -3 -0.795609 -3 0 
+C -3 0.795609 -2.683901 1.55874 -2.12132 2.12132 
+C -1.55874 2.683901 -0.795609 3 0 3 
+z
+" style="stroke: #eb6834"/>
+    </defs>
+    <g clip-path="url(#pdfd00e709d)">
+     <use xlink:href="#mf1f81a1e4a" x="62.888488" y="13.5" style="fill: #eb6834; stroke: #eb6834"/>
+     <use xlink:href="#mf1f81a1e4a" x="125.384488" y="20.747672" style="fill: #eb6834; stroke: #eb6834"/>
+     <use xlink:href="#mf1f81a1e4a" x="187.880488" y="19.908287" style="fill: #eb6834; stroke: #eb6834"/>
+     <use xlink:href="#mf1f81a1e4a" x="250.376488" y="17.507078" style="fill: #eb6834; stroke: #eb6834"/>
+     <use xlink:href="#mf1f81a1e4a" x="312.872488" y="26.268868" style="fill: #eb6834; stroke: #eb6834"/>
+    </g>
+   </g>
+   <g id="patch_3">
+    <path d="M 44.139688 145.8 
+L 44.139688 7.2 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 44.139688 145.8 
+L 356.619688 145.8 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="text_10">
+    <text style="font-size: 8px; font-family: 'Liberation Sans'; text-anchor: start; fill: #52514e" x="317.872168" y="141.56875" transform="rotate(-0 317.872168 141.56875)">horizontal</text>
+   </g>
+   <g id="text_11">
+    <text style="font-size: 8px; font-family: 'Liberation Sans'; text-anchor: start; fill: #52514e" x="317.872168" y="28.337618" transform="rotate(-0 317.872168 28.337618)">vertical</text>
+   </g>
+   <g id="legend_1">
+    <g id="line2d_31">
+     <path d="M 52.239688 119.792813 
+L 61.239688 119.792813 
+L 70.239688 119.792813 
+" style="fill: none; stroke: #2a78d6; stroke-width: 2; stroke-linecap: square"/>
+     <g>
+      <use xlink:href="#m464db55dd6" x="61.239688" y="119.792813" style="fill: #2a78d6; stroke: #2a78d6"/>
+     </g>
+    </g>
+    <g id="text_12">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="77.439688" y="122.942813" transform="rotate(-0 77.439688 122.942813)">Horizontal error variance</text>
+    </g>
+    <g id="line2d_32">
+     <path d="M 52.239688 132.6825 
+L 61.239688 132.6825 
+L 70.239688 132.6825 
+" style="fill: none; stroke: #eb6834; stroke-width: 2; stroke-linecap: square"/>
+     <g>
+      <use xlink:href="#mf1f81a1e4a" x="61.239688" y="132.6825" style="fill: #eb6834; stroke: #eb6834"/>
+     </g>
+    </g>
+    <g id="text_13">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="77.439688" y="135.8325" transform="rotate(-0 77.439688 135.8325)">Vertical error variance</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="pdfd00e709d">
+   <rect x="44.139688" y="7.2" width="312.48" height="138.6"/>
+  </clipPath>
+ </defs>
+</svg>
+</div>
+<p class="cap">Figure 2. USV detection error variance (MLE) by YOLO confidence. Horizontal variance falls about 20× as
+confidence rises. Vertical variance barely changes, and the vertical error has a constant offset of about +0.09 box heights.</p>
+<p>The drone code uses one variance for both axes, scaled by (0.5/confidence)². That roughly fits the horizontal axis but not
+the vertical one. On the USV, maximum likelihood also shows that optical flow's vertical error variance is about 4× YOLO's
+(0.045 vs 0.011 box sizes²). So on the boat, flow should carry less weight than YOLO.</p>
+
+<h3>III.3 MLE of Q: the likelihood peaks at 10× the drone setting on the USV</h3>
+<div class="fig"><svg xmlns:xlink="http://www.w3.org/1999/xlink" width="369.041094pt" height="187.276875pt" viewBox="0 0 369.041094 187.276875" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-11-04T12:41:35.636394</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 187.276875 
+L 369.041094 187.276875 
+L 369.041094 -0 
+L 0 -0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 49.361094 152.2975 
+L 361.841094 152.2975 
+L 361.841094 13.6975 
+L 49.361094 13.6975 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <path d="M 63.56473 152.2975 
+L 63.56473 13.6975 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_2">
+      <defs>
+       <path id="maf2bea33c8" d="M 0 0 
+L 0 3.5 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#maf2bea33c8" x="63.56473" y="152.2975" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_1">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="63.56473" y="165.819687" transform="rotate(-0 63.56473 165.819687)">1×</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_3">
+      <path d="M 118.280314 152.2975 
+L 118.280314 13.6975 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_4">
+      <g>
+       <use xlink:href="#maf2bea33c8" x="118.280314" y="152.2975" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_2">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="118.280314" y="165.819687" transform="rotate(-0 118.280314 165.819687)">3×</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_5">
+      <path d="M 178.243302 152.2975 
+L 178.243302 13.6975 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_6">
+      <g>
+       <use xlink:href="#maf2bea33c8" x="178.243302" y="152.2975" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_3">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="178.243302" y="165.819687" transform="rotate(-0 178.243302 165.819687)">10×</text>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_7">
+      <path d="M 232.958886 152.2975 
+L 232.958886 13.6975 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_8">
+      <g>
+       <use xlink:href="#maf2bea33c8" x="232.958886" y="152.2975" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_4">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="232.958886" y="165.819687" transform="rotate(-0 232.958886 165.819687)">30×</text>
+     </g>
+    </g>
+    <g id="xtick_5">
+     <g id="line2d_9">
+      <path d="M 292.921873 152.2975 
+L 292.921873 13.6975 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_10">
+      <g>
+       <use xlink:href="#maf2bea33c8" x="292.921873" y="152.2975" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_5">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="292.921873" y="165.819687" transform="rotate(-0 292.921873 165.819687)">100×</text>
+     </g>
+    </g>
+    <g id="xtick_6">
+     <g id="line2d_11">
+      <path d="M 347.637457 152.2975 
+L 347.637457 13.6975 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_12">
+      <g>
+       <use xlink:href="#maf2bea33c8" x="347.637457" y="152.2975" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_6">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="347.637457" y="165.819687" transform="rotate(-0 347.637457 165.819687)">300×</text>
+     </g>
+    </g>
+    <g id="text_7">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="205.601094" y="178.209375" transform="rotate(-0 205.601094 178.209375)">Process noise Q, as a multiple of the drone code's value</text>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_13">
+      <path d="M 49.361094 140.144857 
+L 361.841094 140.144857 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_14">
+      <defs>
+       <path id="mab43f42fef" d="M 0 0 
+L -3.5 0 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#mab43f42fef" x="49.361094" y="140.144857" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_8">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="42.361094" y="143.405951" transform="rotate(-0 42.361094 143.405951)">−13.0</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_15">
+      <path d="M 49.361094 106.508979 
+L 361.841094 106.508979 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_16">
+      <g>
+       <use xlink:href="#mab43f42fef" x="49.361094" y="106.508979" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_9">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="42.361094" y="109.770073" transform="rotate(-0 42.361094 109.770073)">−12.5</text>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_17">
+      <path d="M 49.361094 72.873101 
+L 361.841094 72.873101 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_18">
+      <g>
+       <use xlink:href="#mab43f42fef" x="49.361094" y="72.873101" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_10">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="42.361094" y="76.134194" transform="rotate(-0 42.361094 76.134194)">−12.0</text>
+     </g>
+    </g>
+    <g id="ytick_4">
+     <g id="line2d_19">
+      <path d="M 49.361094 39.237222 
+L 361.841094 39.237222 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_20">
+      <g>
+       <use xlink:href="#mab43f42fef" x="49.361094" y="39.237222" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_11">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="42.361094" y="42.498316" transform="rotate(-0 42.361094 42.498316)">−11.5</text>
+     </g>
+    </g>
+    <g id="text_12">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="13.722188" y="82.9975" transform="rotate(-90 13.722188 82.9975)">Mean innovation log-likelihood</text>
+    </g>
+   </g>
+   <g id="line2d_21">
+    <path d="M 63.56473 60.966 
+L 118.280314 30.626438 
+L 178.243302 19.9975 
+L 232.958886 33.586395 
+L 292.921873 64.262316 
+L 347.637457 99.445444 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #2a78d6; stroke-width: 2; stroke-linecap: square"/>
+    <defs>
+     <path id="m554154f5ff" d="M 0 3 
+C 0.795609 3 1.55874 2.683901 2.12132 2.12132 
+C 2.683901 1.55874 3 0.795609 3 0 
+C 3 -0.795609 2.683901 -1.55874 2.12132 -2.12132 
+C 1.55874 -2.683901 0.795609 -3 0 -3 
+C -0.795609 -3 -1.55874 -2.683901 -2.12132 -2.12132 
+C -2.683901 -1.55874 -3 -0.795609 -3 0 
+C -3 0.795609 -2.683901 1.55874 -2.12132 2.12132 
+C -1.55874 2.683901 -0.795609 3 0 3 
+z
+" style="stroke: #2a78d6"/>
+    </defs>
+    <g clip-path="url(#pb4c780b246)">
+     <use xlink:href="#m554154f5ff" x="63.56473" y="60.966" style="fill: #2a78d6; stroke: #2a78d6"/>
+     <use xlink:href="#m554154f5ff" x="118.280314" y="30.626438" style="fill: #2a78d6; stroke: #2a78d6"/>
+     <use xlink:href="#m554154f5ff" x="178.243302" y="19.9975" style="fill: #2a78d6; stroke: #2a78d6"/>
+     <use xlink:href="#m554154f5ff" x="232.958886" y="33.586395" style="fill: #2a78d6; stroke: #2a78d6"/>
+     <use xlink:href="#m554154f5ff" x="292.921873" y="64.262316" style="fill: #2a78d6; stroke: #2a78d6"/>
+     <use xlink:href="#m554154f5ff" x="347.637457" y="99.445444" style="fill: #2a78d6; stroke: #2a78d6"/>
+    </g>
+   </g>
+   <g id="line2d_22">
+    <path d="M 63.56473 114.447046 
+L 118.280314 100.858151 
+L 178.243302 94.130976 
+L 232.958886 101.665412 
+L 292.921873 121.846939 
+L 347.637457 145.9975 
+" clip-path="url(#pb4c780b246)" style="fill: none; stroke: #eb6834; stroke-width: 2; stroke-linecap: square"/>
+    <defs>
+     <path id="m520ac66beb" d="M 0 3 
+C 0.795609 3 1.55874 2.683901 2.12132 2.12132 
+C 2.683901 1.55874 3 0.795609 3 0 
+C 3 -0.795609 2.683901 -1.55874 2.12132 -2.12132 
+C 1.55874 -2.683901 0.795609 -3 0 -3 
+C -0.795609 -3 -1.55874 -2.683901 -2.12132 -2.12132 
+C -2.683901 -1.55874 -3 -0.795609 -3 0 
+C -3 0.795609 -2.683901 1.55874 -2.12132 2.12132 
+C -1.55874 2.683901 -0.795609 3 0 3 
+z
+" style="stroke: #eb6834"/>
+    </defs>
+    <g clip-path="url(#pb4c780b246)">
+     <use xlink:href="#m520ac66beb" x="63.56473" y="114.447046" style="fill: #eb6834; stroke: #eb6834"/>
+     <use xlink:href="#m520ac66beb" x="118.280314" y="100.858151" style="fill: #eb6834; stroke: #eb6834"/>
+     <use xlink:href="#m520ac66beb" x="178.243302" y="94.130976" style="fill: #eb6834; stroke: #eb6834"/>
+     <use xlink:href="#m520ac66beb" x="232.958886" y="101.665412" style="fill: #eb6834; stroke: #eb6834"/>
+     <use xlink:href="#m520ac66beb" x="292.921873" y="121.846939" style="fill: #eb6834; stroke: #eb6834"/>
+     <use xlink:href="#m520ac66beb" x="347.637457" y="145.9975" style="fill: #eb6834; stroke: #eb6834"/>
+    </g>
+   </g>
+   <g id="patch_3">
+    <path d="M 49.361094 152.2975 
+L 49.361094 13.6975 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 49.361094 152.2975 
+L 361.841094 152.2975 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="text_13">
+    <text style="font-size: 8px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="178.243302" y="12.9975" transform="rotate(-0 178.243302 12.9975)">max</text>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 8px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="178.243302" y="87.130976" transform="rotate(-0 178.243302 87.130976)">max</text>
+   </g>
+   <g id="legend_1">
+    <g id="line2d_23">
+     <path d="M 57.461094 126.290312 
+L 66.461094 126.290312 
+L 75.461094 126.290312 
+" style="fill: none; stroke: #2a78d6; stroke-width: 2; stroke-linecap: square"/>
+     <g>
+      <use xlink:href="#m554154f5ff" x="66.461094" y="126.290312" style="fill: #2a78d6; stroke: #2a78d6"/>
+     </g>
+    </g>
+    <g id="text_15">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="82.661094" y="129.440312" transform="rotate(-0 82.661094 129.440312)">Learned R</text>
+    </g>
+    <g id="line2d_24">
+     <path d="M 57.461094 139.18 
+L 66.461094 139.18 
+L 75.461094 139.18 
+" style="fill: none; stroke: #eb6834; stroke-width: 2; stroke-linecap: square"/>
+     <g>
+      <use xlink:href="#m520ac66beb" x="66.461094" y="139.18" style="fill: #eb6834; stroke: #eb6834"/>
+     </g>
+    </g>
+    <g id="text_16">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="82.661094" y="142.33" transform="rotate(-0 82.661094 142.33)">Hand-tuned R</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="pb4c780b246">
+   <rect x="49.361094" y="13.6975" width="312.48" height="138.6"/>
+  </clipPath>
+ </defs>
+</svg>
+</div>
+<p class="cap">Figure 3. USV training fold 0: mean innovation log-likelihood for each candidate Q. Both folds and both R
+choices peak at 10×. Learned R also gives a higher likelihood than the hand-tuned R (−11.2 vs −12.3), so it describes the data better.</p>
+<p>The peak is what the frame rates predict. The drone runs at 30 fps and the boat camera at 10 Hz, so the box moves about 3× as
+far per step on the boat, and the variance of that motion is about 9× larger. On the drone, the likelihood was still rising at
+the largest Q tried (100×), so the grid must be widened.</p>
+
+<h3>III.4 Tracking accuracy on the USV</h3>
+<div class="fig"><svg xmlns:xlink="http://www.w3.org/1999/xlink" width="431.522891pt" height="204.915288pt" viewBox="0 0 431.522891 204.915288" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-11-04T12:41:35.689874</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 204.915288 
+L 431.522891 204.915288 
+L 431.522891 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 41.604219 182.3256 
+L 409.884219 182.3256 
+L 409.884219 32.6376 
+L 41.604219 32.6376 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <defs>
+       <path id="m993e1fde4a" d="M 0 0 
+L 0 3.5 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#m993e1fde4a" x="81.433874" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_1">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="81.433874" y="195.847788" transform="rotate(-0 81.433874 195.847788)">Clear</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_2">
+      <g>
+       <use xlink:href="#m993e1fde4a" x="139.158012" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_2">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="139.158012" y="195.847788" transform="rotate(-0 139.158012 195.847788)">Rain</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_3">
+      <g>
+       <use xlink:href="#m993e1fde4a" x="196.88215" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_3">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="196.88215" y="195.847788" transform="rotate(-0 196.88215 195.847788)">Night</text>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_4">
+      <g>
+       <use xlink:href="#m993e1fde4a" x="254.606288" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_4">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="254.606288" y="195.847788" transform="rotate(-0 254.606288 195.847788)">Night+rain</text>
+     </g>
+    </g>
+    <g id="xtick_5">
+     <g id="line2d_5">
+      <g>
+       <use xlink:href="#m993e1fde4a" x="312.330426" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_5">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="312.330426" y="195.847788" transform="rotate(-0 312.330426 195.847788)">Dark storm</text>
+     </g>
+    </g>
+    <g id="xtick_6">
+     <g id="line2d_6">
+      <g>
+       <use xlink:href="#m993e1fde4a" x="370.054564" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_6">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="370.054564" y="195.847788" transform="rotate(-0 370.054564 195.847788)">Huge waves</text>
+     </g>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_7">
+      <path d="M 41.604219 182.3256 
+L 409.884219 182.3256 
+" clip-path="url(#p4525b39e14)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_8">
+      <defs>
+       <path id="m716cbc5505" d="M 0 0 
+L -3.5 0 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#m716cbc5505" x="41.604219" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_7">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="185.586694" transform="rotate(-0 34.604219 185.586694)">0</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_9">
+      <path d="M 41.604219 155.1096 
+L 409.884219 155.1096 
+" clip-path="url(#p4525b39e14)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_10">
+      <g>
+       <use xlink:href="#m716cbc5505" x="41.604219" y="155.1096" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_8">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="158.370694" transform="rotate(-0 34.604219 158.370694)">20</text>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_11">
+      <path d="M 41.604219 127.8936 
+L 409.884219 127.8936 
+" clip-path="url(#p4525b39e14)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_12">
+      <g>
+       <use xlink:href="#m716cbc5505" x="41.604219" y="127.8936" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_9">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="131.154694" transform="rotate(-0 34.604219 131.154694)">40</text>
+     </g>
+    </g>
+    <g id="ytick_4">
+     <g id="line2d_13">
+      <path d="M 41.604219 100.6776 
+L 409.884219 100.6776 
+" clip-path="url(#p4525b39e14)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_14">
+      <g>
+       <use xlink:href="#m716cbc5505" x="41.604219" y="100.6776" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_10">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="103.938694" transform="rotate(-0 34.604219 103.938694)">60</text>
+     </g>
+    </g>
+    <g id="ytick_5">
+     <g id="line2d_15">
+      <path d="M 41.604219 73.4616 
+L 409.884219 73.4616 
+" clip-path="url(#p4525b39e14)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_16">
+      <g>
+       <use xlink:href="#m716cbc5505" x="41.604219" y="73.4616" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_11">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="76.722694" transform="rotate(-0 34.604219 76.722694)">80</text>
+     </g>
+    </g>
+    <g id="ytick_6">
+     <g id="line2d_17">
+      <path d="M 41.604219 46.2456 
+L 409.884219 46.2456 
+" clip-path="url(#p4525b39e14)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_18">
+      <g>
+       <use xlink:href="#m716cbc5505" x="41.604219" y="46.2456" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_12">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="49.506694" transform="rotate(-0 34.604219 49.506694)">100</text>
+     </g>
+    </g>
+    <g id="text_13">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="13.722188" y="107.4816" transform="rotate(-90 13.722188 107.4816)">Frames with IoU ≥ 0.5 (%)</text>
+    </g>
+   </g>
+   <g id="patch_3">
+    <path d="M 58.344219 182.3256 
+L 73.737322 182.3256 
+L 73.737322 66.238892 
+L 58.344219 66.238892 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 116.068357 182.3256 
+L 131.46146 182.3256 
+L 131.46146 60.83775 
+L 116.068357 60.83775 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 173.792495 182.3256 
+L 189.185598 182.3256 
+L 189.185598 78.761903 
+L 173.792495 78.761903 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 231.516633 182.3256 
+L 246.909736 182.3256 
+L 246.909736 77.4225 
+L 231.516633 77.4225 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 289.24077 182.3256 
+L 304.633874 182.3256 
+L 304.633874 82.726414 
+L 289.24077 82.726414 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 346.964908 182.3256 
+L 362.358012 182.3256 
+L 362.358012 113.445503 
+L 346.964908 113.445503 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 73.737322 182.3256 
+L 89.130426 182.3256 
+L 89.130426 82.690615 
+L 73.737322 82.690615 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 131.46146 182.3256 
+L 146.854564 182.3256 
+L 146.854564 73.3644 
+L 131.46146 73.3644 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_11">
+    <path d="M 189.185598 182.3256 
+L 204.578702 182.3256 
+L 204.578702 99.661769 
+L 189.185598 99.661769 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_12">
+    <path d="M 246.909736 182.3256 
+L 262.302839 182.3256 
+L 262.302839 96.498 
+L 246.909736 96.498 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_13">
+    <path d="M 304.633874 182.3256 
+L 320.026977 182.3256 
+L 320.026977 109.242449 
+L 304.633874 109.242449 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_14">
+    <path d="M 362.358012 182.3256 
+L 377.751115 182.3256 
+L 377.751115 130.365212 
+L 362.358012 130.365212 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_15">
+    <path d="M 89.130426 182.3256 
+L 104.523529 182.3256 
+L 104.523529 62.086708 
+L 89.130426 62.086708 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_16">
+    <path d="M 146.854564 182.3256 
+L 162.247667 182.3256 
+L 162.247667 58.1283 
+L 146.854564 58.1283 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_17">
+    <path d="M 204.578702 182.3256 
+L 219.971805 182.3256 
+L 219.971805 76.48965 
+L 204.578702 76.48965 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_18">
+    <path d="M 262.302839 182.3256 
+L 277.695943 182.3256 
+L 277.695943 71.955 
+L 262.302839 71.955 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_19">
+    <path d="M 320.026977 182.3256 
+L 335.420081 182.3256 
+L 335.420081 102.680278 
+L 320.026977 102.680278 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_20">
+    <path d="M 377.751115 182.3256 
+L 393.144219 182.3256 
+L 393.144219 112.809542 
+L 377.751115 112.809542 
+z
+" clip-path="url(#p4525b39e14)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_21">
+    <path d="M 41.604219 182.3256 
+L 41.604219 32.6376 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_22">
+    <path d="M 41.604219 182.3256 
+L 409.884219 182.3256 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="66.04077" y="63.425592" transform="rotate(-0 66.04077 63.425592)">85</text>
+   </g>
+   <g id="text_15">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="123.764908" y="58.02445" transform="rotate(-0 123.764908 58.02445)">89</text>
+   </g>
+   <g id="text_16">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="181.489046" y="75.948603" transform="rotate(-0 181.489046 75.948603)">76</text>
+   </g>
+   <g id="text_17">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="239.213184" y="74.6092" transform="rotate(-0 239.213184 74.6092)">77</text>
+   </g>
+   <g id="text_18">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="296.937322" y="79.913114" transform="rotate(-0 296.937322 79.913114)">73</text>
+   </g>
+   <g id="text_19">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="354.66146" y="110.632203" transform="rotate(-0 354.66146 110.632203)">51</text>
+   </g>
+   <g id="text_20">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="81.433874" y="79.877315" transform="rotate(-0 81.433874 79.877315)">73</text>
+   </g>
+   <g id="text_21">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="139.158012" y="70.5511" transform="rotate(-0 139.158012 70.5511)">80</text>
+   </g>
+   <g id="text_22">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="196.88215" y="96.848469" transform="rotate(-0 196.88215 96.848469)">61</text>
+   </g>
+   <g id="text_23">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="254.606288" y="93.6847" transform="rotate(-0 254.606288 93.6847)">63</text>
+   </g>
+   <g id="text_24">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="312.330426" y="106.429149" transform="rotate(-0 312.330426 106.429149)">54</text>
+   </g>
+   <g id="text_25">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="370.054564" y="127.551912" transform="rotate(-0 370.054564 127.551912)">38</text>
+   </g>
+   <g id="text_26">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="96.826977" y="59.273408" transform="rotate(-0 96.826977 59.273408)">88</text>
+   </g>
+   <g id="text_27">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="154.551115" y="55.315" transform="rotate(-0 154.551115 55.315)">91</text>
+   </g>
+   <g id="text_28">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="212.275253" y="73.67635" transform="rotate(-0 212.275253 73.67635)">78</text>
+   </g>
+   <g id="text_29">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="269.999391" y="69.1417" transform="rotate(-0 269.999391 69.1417)">81</text>
+   </g>
+   <g id="text_30">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="327.723529" y="99.866978" transform="rotate(-0 327.723529 99.866978)">59</text>
+   </g>
+   <g id="text_31">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="385.447667" y="109.996242" transform="rotate(-0 385.447667 109.996242)">51</text>
+   </g>
+   <g id="legend_1">
+    <g id="patch_23">
+     <path d="M 30.765547 17.322187 
+L 48.765547 17.322187 
+L 48.765547 11.022187 
+L 30.765547 11.022187 
+z
+" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </g>
+    <g id="text_32">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="55.965547" y="17.322187" transform="rotate(-0 55.965547 17.322187)">YOLO only</text>
+    </g>
+    <g id="patch_24">
+     <path d="M 117.983984 17.322187 
+L 135.983984 17.322187 
+L 135.983984 11.022187 
+L 117.983984 11.022187 
+z
+" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </g>
+    <g id="text_33">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="143.183984" y="17.322187" transform="rotate(-0 143.183984 17.322187)">Drone tracker (hand-tuned)</text>
+    </g>
+    <g id="patch_25">
+     <path d="M 269.728203 17.322187 
+L 287.728203 17.322187 
+L 287.728203 11.022187 
+L 269.728203 11.022187 
+z
+" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </g>
+    <g id="text_34">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="294.928203" y="17.322187" transform="rotate(-0 294.928203 17.322187)">Drone tracker + MLE-learned Q</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p4525b39e14">
+   <rect x="41.604219" y="32.6376" width="368.28" height="149.688"/>
+  </clipPath>
+ </defs>
+</svg>
+</div>
+<p class="cap">Figure 4. USV, 64 camera sequences, two folds split by seed. Frames tracked with IoU ≥ 0.5.</p>
+<table class='res'><tr><th>Condition</th><th>YOLO only</th><th>Drone tracker, hand-tuned</th><th>+ MLE-learned Q</th><th>+ MLE-learned R and Q</th><th>+ Bayes gate, learned R and Q</th></tr><tr><th class='rowh'>Clear</th><td>85.3 <span class='fast'>/ 65.4</span></td><td>73.2 <span class='fast'>/ 53.2</span></td><td><b>88.4</b> <span class='fast'>/ <b>81.2</b></span></td><td>88.2 <span class='fast'>/ 80.9</span></td><td>70.4 <span class='fast'>/ 68.0</span></td></tr><tr><th class='rowh'>Rain</th><td>89.3 <span class='fast'>/ 73.2</span></td><td>80.1 <span class='fast'>/ 62.2</span></td><td><b>91.3</b> <span class='fast'>/ <b>83.0</b></span></td><td>89.1 <span class='fast'>/ 79.9</span></td><td>81.2 <span class='fast'>/ 75.0</span></td></tr><tr><th class='rowh'>Night</th><td>76.1 <span class='fast'>/ 38.9</span></td><td>60.7 <span class='fast'>/ 28.1</span></td><td><b>77.8</b> <span class='fast'>/ <b>54.1</b></span></td><td>75.1 <span class='fast'>/ 53.8</span></td><td>68.0 <span class='fast'>/ 50.7</span></td></tr><tr><th class='rowh'>Night + rain</th><td>77.1 <span class='fast'>/ 44.9</span></td><td>63.1 <span class='fast'>/ 32.5</span></td><td><b>81.1</b> <span class='fast'>/ <b>63.3</b></span></td><td>77.8 <span class='fast'>/ 60.9</span></td><td>70.8 <span class='fast'>/ 58.4</span></td></tr><tr><th class='rowh'>Dark storm</th><td><b>73.2</b> <span class='fast'>/ <b>41.6</b></span></td><td>53.7 <span class='fast'>/ 26.6</span></td><td>58.5 <span class='fast'>/ 38.8</span></td><td>53.7 <span class='fast'>/ 38.1</span></td><td>44.7 <span class='fast'>/ 33.4</span></td></tr><tr><th class='rowh'>Huge waves</th><td>50.6 <span class='fast'>/ 9.5</span></td><td>38.2 <span class='fast'>/ 7.8</span></td><td><b>51.1</b> <span class='fast'>/ <b>22.6</b></span></td><td>46.7 <span class='fast'>/ 19.0</span></td><td>36.9 <span class='fast'>/ 21.1</span></td></tr></table>
+<p class="small">Each cell: all frames / <span class="fast">fastest 20% of frames</span>, in % of frames with IoU ≥ 0.5. Bold = best in the row.</p>
+
+<h3>III.5 Tracking accuracy on the drone</h3>
+<div class="fig"><svg xmlns:xlink="http://www.w3.org/1999/xlink" width="431.522891pt" height="214.609412pt" viewBox="0 0 431.522891 214.609412" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-11-04T12:41:35.741885</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 214.609412 
+L 431.522891 214.609412 
+L 431.522891 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 41.604219 182.3256 
+L 409.884219 182.3256 
+L 409.884219 32.6376 
+L 41.604219 32.6376 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <defs>
+       <path id="mcac0c2eca5" d="M 0 0 
+L 0 3.5 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#mcac0c2eca5" x="93.586324" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_1">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e" transform="translate(81.581168 195.847787)">testv4</text>
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e" transform="translate(66.076558 205.541912)">1-frame delay</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_2">
+      <g>
+       <use xlink:href="#mcac0c2eca5" x="181.691587" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_2">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e" transform="translate(160.680806 195.847787)">IMG_7888</text>
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e" transform="translate(154.181822 205.541912)">1-frame delay</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_3">
+      <g>
+       <use xlink:href="#mcac0c2eca5" x="269.79685" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_3">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e" transform="translate(257.791694 195.847787)">testv4</text>
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e" transform="translate(242.287085 205.541912)">3-frame delay</text>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_4">
+      <g>
+       <use xlink:href="#mcac0c2eca5" x="357.902113" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_4">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e" transform="translate(336.891332 195.847787)">IMG_7888</text>
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; fill: #52514e" transform="translate(330.392348 205.541912)">3-frame delay</text>
+     </g>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_5">
+      <path d="M 41.604219 182.3256 
+L 409.884219 182.3256 
+" clip-path="url(#p6137334708)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_6">
+      <defs>
+       <path id="mc76d7ebd97" d="M 0 0 
+L -3.5 0 
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#mc76d7ebd97" x="41.604219" y="182.3256" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_5">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="185.586694" transform="rotate(-0 34.604219 185.586694)">0</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_7">
+      <path d="M 41.604219 155.1096 
+L 409.884219 155.1096 
+" clip-path="url(#p6137334708)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_8">
+      <g>
+       <use xlink:href="#mc76d7ebd97" x="41.604219" y="155.1096" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_6">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="158.370694" transform="rotate(-0 34.604219 158.370694)">20</text>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_9">
+      <path d="M 41.604219 127.8936 
+L 409.884219 127.8936 
+" clip-path="url(#p6137334708)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_10">
+      <g>
+       <use xlink:href="#mc76d7ebd97" x="41.604219" y="127.8936" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_7">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="131.154694" transform="rotate(-0 34.604219 131.154694)">40</text>
+     </g>
+    </g>
+    <g id="ytick_4">
+     <g id="line2d_11">
+      <path d="M 41.604219 100.6776 
+L 409.884219 100.6776 
+" clip-path="url(#p6137334708)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_12">
+      <g>
+       <use xlink:href="#mc76d7ebd97" x="41.604219" y="100.6776" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_8">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="103.938694" transform="rotate(-0 34.604219 103.938694)">60</text>
+     </g>
+    </g>
+    <g id="ytick_5">
+     <g id="line2d_13">
+      <path d="M 41.604219 73.4616 
+L 409.884219 73.4616 
+" clip-path="url(#p6137334708)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_14">
+      <g>
+       <use xlink:href="#mc76d7ebd97" x="41.604219" y="73.4616" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_9">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="76.722694" transform="rotate(-0 34.604219 76.722694)">80</text>
+     </g>
+    </g>
+    <g id="ytick_6">
+     <g id="line2d_15">
+      <path d="M 41.604219 46.2456 
+L 409.884219 46.2456 
+" clip-path="url(#p6137334708)" style="fill: none; stroke: #e4e3df; stroke-width: 0.6; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_16">
+      <g>
+       <use xlink:href="#mc76d7ebd97" x="41.604219" y="46.2456" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_10">
+      <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: end; fill: #52514e" x="34.604219" y="49.506694" transform="rotate(-0 34.604219 49.506694)">100</text>
+     </g>
+    </g>
+    <g id="text_11">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="13.722188" y="107.4816" transform="rotate(-90 13.722188 107.4816)">Frames with IoU ≥ 0.5 (%)</text>
+    </g>
+   </g>
+   <g id="patch_3">
+    <path d="M 58.344219 182.3256 
+L 81.838956 182.3256 
+L 81.838956 76.37018 
+L 58.344219 76.37018 
+z
+" clip-path="url(#p6137334708)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 146.449482 182.3256 
+L 169.944219 182.3256 
+L 169.944219 71.731639 
+L 146.449482 71.731639 
+z
+" clip-path="url(#p6137334708)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 234.554745 182.3256 
+L 258.049482 182.3256 
+L 258.049482 127.010638 
+L 234.554745 127.010638 
+z
+" clip-path="url(#p6137334708)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 322.660008 182.3256 
+L 346.154745 182.3256 
+L 346.154745 111.119153 
+L 322.660008 111.119153 
+z
+" clip-path="url(#p6137334708)" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 81.838956 182.3256 
+L 105.333692 182.3256 
+L 105.333692 68.319646 
+L 81.838956 68.319646 
+z
+" clip-path="url(#p6137334708)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 169.944219 182.3256 
+L 193.438956 182.3256 
+L 193.438956 74.511934 
+L 169.944219 74.511934 
+z
+" clip-path="url(#p6137334708)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 258.049482 182.3256 
+L 281.544219 182.3256 
+L 281.544219 118.700409 
+L 258.049482 118.700409 
+z
+" clip-path="url(#p6137334708)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 346.154745 182.3256 
+L 369.649482 182.3256 
+L 369.649482 105.404102 
+L 346.154745 105.404102 
+z
+" clip-path="url(#p6137334708)" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_11">
+    <path d="M 105.333692 182.3256 
+L 128.828429 182.3256 
+L 128.828429 64.424226 
+L 105.333692 64.424226 
+z
+" clip-path="url(#p6137334708)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_12">
+    <path d="M 193.438956 182.3256 
+L 216.933692 182.3256 
+L 216.933692 70.495952 
+L 193.438956 70.495952 
+z
+" clip-path="url(#p6137334708)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_13">
+    <path d="M 281.544219 182.3256 
+L 305.038956 182.3256 
+L 305.038956 84.420715 
+L 281.544219 84.420715 
+z
+" clip-path="url(#p6137334708)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_14">
+    <path d="M 369.649482 182.3256 
+L 393.144219 182.3256 
+L 393.144219 71.268256 
+L 369.649482 71.268256 
+z
+" clip-path="url(#p6137334708)" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_15">
+    <path d="M 41.604219 182.3256 
+L 41.604219 32.6376 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_16">
+    <path d="M 41.604219 182.3256 
+L 409.884219 182.3256 
+" style="fill: none; stroke: #e4e3df; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="text_12">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="70.091587" y="73.55688" transform="rotate(-0 70.091587 73.55688)">78</text>
+   </g>
+   <g id="text_13">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="158.19685" y="68.918339" transform="rotate(-0 158.19685 68.918339)">81</text>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="246.302113" y="124.197338" transform="rotate(-0 246.302113 124.197338)">41</text>
+   </g>
+   <g id="text_15">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="334.407377" y="108.305853" transform="rotate(-0 334.407377 108.305853)">52</text>
+   </g>
+   <g id="text_16">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="93.586324" y="65.506346" transform="rotate(-0 93.586324 65.506346)">84</text>
+   </g>
+   <g id="text_17">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="181.691587" y="71.698634" transform="rotate(-0 181.691587 71.698634)">79</text>
+   </g>
+   <g id="text_18">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="269.79685" y="115.887109" transform="rotate(-0 269.79685 115.887109)">47</text>
+   </g>
+   <g id="text_19">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="357.902113" y="102.590802" transform="rotate(-0 357.902113 102.590802)">57</text>
+   </g>
+   <g id="text_20">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="117.081061" y="61.610926" transform="rotate(-0 117.081061 61.610926)">87</text>
+   </g>
+   <g id="text_21">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="205.186324" y="67.682652" transform="rotate(-0 205.186324 67.682652)">82</text>
+   </g>
+   <g id="text_22">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="293.291587" y="81.607415" transform="rotate(-0 293.291587 81.607415)">72</text>
+   </g>
+   <g id="text_23">
+    <text style="font-size: 7px; font-family: 'Liberation Sans'; text-anchor: middle; fill: #52514e" x="381.39685" y="68.454956" transform="rotate(-0 381.39685 68.454956)">82</text>
+   </g>
+   <g id="legend_1">
+    <g id="patch_17">
+     <path d="M 30.765547 17.322188 
+L 48.765547 17.322188 
+L 48.765547 11.022188 
+L 30.765547 11.022188 
+z
+" style="fill: #2a78d6; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </g>
+    <g id="text_24">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="55.965547" y="17.322188" transform="rotate(-0 55.965547 17.322188)">YOLO only</text>
+    </g>
+    <g id="patch_18">
+     <path d="M 117.983984 17.322188 
+L 135.983984 17.322188 
+L 135.983984 11.022188 
+L 117.983984 11.022188 
+z
+" style="fill: #eb6834; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </g>
+    <g id="text_25">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="143.183984" y="17.322188" transform="rotate(-0 143.183984 17.322188)">Drone tracker (hand-tuned)</text>
+    </g>
+    <g id="patch_19">
+     <path d="M 269.728203 17.322188 
+L 287.728203 17.322188 
+L 287.728203 11.022188 
+L 269.728203 11.022188 
+z
+" style="fill: #1baf7a; stroke: #ffffff; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </g>
+    <g id="text_26">
+     <text style="font-size: 9px; font-family: 'Liberation Sans'; text-anchor: start" x="294.928203" y="17.322188" transform="rotate(-0 294.928203 17.322188)">Drone tracker + MLE-learned Q</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p6137334708">
+   <rect x="41.604219" y="32.6376" width="368.28" height="149.688"/>
+  </clipPath>
+ </defs>
+</svg>
+</div>
+<p class="cap">Figure 5. Drone, cross-video: trained on one video, tested on the other. Frames tracked with IoU ≥ 0.5.</p>
+<table class='res'><tr><th>Test video</th><th>YOLO only</th><th>Drone tracker, hand-tuned</th><th>+ MLE-learned Q</th><th>+ MLE-learned R and Q</th><th>+ Bayes gate, learned R and Q</th></tr><tr><th class='rowh'>testv4, 1-frame delay</th><td>77.9 <span class='fast'>/ 68.0</span></td><td>83.8 <span class='fast'>/ 79.6</span></td><td>86.6 <span class='fast'>/ 86.4</span></td><td><b>89.1</b> <span class='fast'>/ 93.2</span></td><td><b>89.1</b> <span class='fast'>/ <b>96.1</b></span></td></tr><tr><th class='rowh'>IMG_7888, 1-frame delay</th><td>81.3 <span class='fast'>/ 63.4</span></td><td>79.2 <span class='fast'>/ 77.7</span></td><td>82.2 <span class='fast'>/ 84.6</span></td><td>82.4 <span class='fast'>/ <b>86.3</b></span></td><td><b>88.2</b> <span class='fast'>/ 82.3</span></td></tr><tr><th class='rowh'>testv4, 3-frame delay</th><td>40.6 <span class='fast'>/ 4.9</span></td><td>46.8 <span class='fast'>/ 24.3</span></td><td><b>71.9</b> <span class='fast'>/ <b>53.4</b></span></td><td>47.3 <span class='fast'>/ 35.0</span></td><td>48.1 <span class='fast'>/ 41.7</span></td></tr><tr><th class='rowh'>IMG_7888, 3-frame delay</th><td>52.3 <span class='fast'>/ 1.1</span></td><td>56.5 <span class='fast'>/ 26.9</span></td><td><b>81.6</b> <span class='fast'>/ <b>70.3</b></span></td><td>57.4 <span class='fast'>/ 34.3</span></td><td>58.9 <span class='fast'>/ 34.3</span></td></tr></table>
+<p class="small">Each cell: all frames / <span class="fast">fastest 20% of frames</span>, in %. On IMG_7888 with a 1-frame delay, the
+Bayes gate cuts wrong-target frames from 16.0% (hand-tuned) to 7.2%.</p>
+
+<h3>III.6 Is the improvement real? Statistical tests and videos</h3>
+<p><b>USV.</b> Each of the 64 camera sequences is one paired sample (hand-tuned and learned Q run on the same frames). The learned Q
+came from training runs that never include the test sequence. Wilcoxon signed-rank test on the per-sequence share of well-tracked frames:</p>
+<table class="res"><tr><th>Condition</th><th>Sequences</th><th>Learned Q better than hand-tuned</th><th>Median gain (points)</th><th>p</th>
+<th>Learned Q better than YOLO only</th><th>Median gain (points)</th><th>p</th></tr><tr><th class='rowh'>All conditions</th><td>64</td><td>64/64</td><td>+13.7</td><td>4e-12</td><td>42/64</td><td>+1.9</td><td>0.11</td></tr><tr><th class='rowh'>Clear</th><td>12</td><td>12/12</td><td>+14.8</td><td>0.0005</td><td>11/12</td><td>+2.7</td><td>0.00098</td></tr><tr><th class='rowh'>Rain</th><td>8</td><td>8/8</td><td>+12.1</td><td>0.008</td><td>7/8</td><td>+1.7</td><td>0.016</td></tr><tr><th class='rowh'>Night</th><td>8</td><td>8/8</td><td>+17.0</td><td>0.008</td><td>6/8</td><td>+2.1</td><td>0.078</td></tr><tr><th class='rowh'>Night + rain</th><td>8</td><td>8/8</td><td>+18.5</td><td>0.008</td><td>8/8</td><td>+3.5</td><td>0.0078</td></tr><tr><th class='rowh'>Dark storm</th><td>8</td><td>8/8</td><td>+5.0</td><td>0.008</td><td>0/8</td><td>-14.8</td><td>0.0078</td></tr><tr><th class='rowh'>Huge waves</th><td>20</td><td>20/20</td><td>+12.1</td><td>2e-06</td><td>10/20</td><td>+0.3</td><td>0.7</td></tr></table>
+<p><b>Drone.</b> Two videos, so we resample 1-second blocks of frames (block bootstrap, 4,000 resamples) to get a 95% confidence
+interval for the gain in the share of well-tracked frames:</p>
+<table class="res"><tr><th>Test video</th><th>Learned Q − hand-tuned, points [95% CI]</th><th>1-s blocks better / worse</th><th>Learned Q − YOLO only, points [95% CI]</th></tr><tr><th class='rowh'>testv4, 1-frame delay</th><td>+2.9 [-1.2, +7.3]</td><td>7 / 4 of 17</td><td>+8.8 [+4.1, +13.9]</td></tr><tr><th class='rowh'>IMG_7888, 1-frame delay</th><td>+3.0 [+1.1, +5.1]</td><td>9 / 0 of 29</td><td>+0.9 [-9.1, +9.3]</td></tr><tr><th class='rowh'>testv4, 3-frame delay</th><td>+25.2 [+13.3, +35.5]</td><td>13 / 2 of 17</td><td>+31.3 [+22.5, +41.6]</td></tr><tr><th class='rowh'>IMG_7888, 3-frame delay</th><td>+25.1 [+16.2, +35.9]</td><td>22 / 1 of 29</td><td>+29.3 [+18.7, +41.6]</td></tr></table>
+<div class="box"><b>Verdict.</b> Against the hand-tuned tracker, the learned Q is better on <b>every one of the 64 boat sequences</b>
+(p = 4e-12). On the drone it is better in all four cases, and in three the 95% interval excludes zero.
+With a slow detector the gain is about +25 points. Against raw YOLO, the learned tracker wins clearly in clear water, rain and
+night + rain, and when the drone's detector is slow. It is no better than YOLO in huge waves (p = 0.7) and
+<b>worse than YOLO in the dark storm</b> on all 8 sequences. That case is the main open problem for the final presentation.</div>
+<p><b>Detection videos</b> (folder <code>Experiments/PR_Course/rollouts/</code>). Each video shows three panels side by side: YOLO only, the
+hand-tuned drone tracker, and the drone tracker with learned Q. Green is the ground truth; each panel shows its current IoU and
+its running share of well-tracked frames.</p>
+<table><tr><th>File</th><th>What it shows</th></tr>
+<tr><td><code>drone_testv4_delay3.mp4</code>, <code>drone_img7888_delay3.mp4</code></td><td>Drone with a slow detector (3-frame delay): the hand-tuned box lags behind fast climbs and drops; the learned-Q box stays on the drone.</td></tr>
+<tr><td><code>drone_testv4_delay1.mp4</code>, <code>drone_img7888_delay1.mp4</code></td><td>Drone with the teammate's real delay: smaller gain (about +3 points).</td></tr></table>
+<table class="res"><tr><th>USV video (cropped around the leader)</th><th>YOLO only</th><th>Hand-tuned</th><th>Learned Q</th></tr><tr><td><code>usv_huge_waves_C10_huge_waves_s_dropout_5147_on_pv_Right.mp4</code></td><td>61.8</td><td>41.2</td><td>65.8</td></tr><tr><td><code>usv_clear_C8_clear_speed_s_dropout_5147_on_pv_Left.mp4</code></td><td>86.8</td><td>68.6</td><td>89.1</td></tr><tr><td><code>usv_dark_storm_L10_lap_dark_storm_5021_on_pv_Right.mp4</code></td><td>75.9</td><td>55.4</td><td>60.7</td></tr></table>
+<p class="small">The USV clips are the sequences with the largest gain in huge waves and in clear water, plus a typical
+(median-gain) dark-storm sequence, where learned Q improves on the hand-tuned tracker but stays below YOLO. The simulator's
+truth box sits on average about 0.1 box heights above YOLO's box in every condition. It is aligned in time (the best match is
+at a 0-step offset), and it lowers every tracker's IoU equally. In huge waves, single frames can show a larger mismatch.</p>
+
+<h3>III.7 What the results show</h3>
+<ol>
+<li><b>Hand-tuned constants do not transfer.</b> The drone tracker, tuned on drone video, is worse than raw YOLO on the USV in every condition.</li>
+<li><b>MLE-learned Q is the one change that helps on both platforms.</b> On the USV it beats the hand-tuned tracker on all 64 sequences, beats raw YOLO in clear, rain, night and
+night + rain, ties with YOLO in huge waves, and loses to it in the dark storm. In the fastest huge-wave frames it more
+than doubles the share of well-tracked frames in the fastest huge-wave frames (9.5% → 22.6%). On the drone with a slow
+detector it raises accuracy from 47–57% to 72–82%.</li>
+<li><b>Learned R helps only in some cases.</b> It helps on the drone with a 1-frame delay, but hurts with a 3-frame delay and on
+the USV. The fit compares each box with ground truth at the frame the image was taken, but the filter uses the box L frames
+later. A latency-aware fit is planned.</li>
+<li><b>The Bayes gate depends on the platform.</b> On the drone, which has real distractors, it gives the best accuracy in fast
+frames (96% on testv4) and halves wrong locks on IMG_7888. On the USV, wrong leader boxes are rare (2.2% of candidates). Rejecting
+true boxes then causes drift, so the gate lowers accuracy. A loss-ratio sweep and target re-acquisition are planned.</li>
+<li><b>There is a trade-off between lag and smoothness.</b> The learned trackers follow the target more closely but jitter more
+(USV clear: 1.6 → 1.9 px; drone testv4: 9 → 21–25 px).</li></ol>
+<div class="warn"><b>Limitations of these results.</b> There are only two drone videos, so the drone results come from two
+folds and are not significance-tested. Drone ground truth comes from Grounding DINO, not hand labels; frames where it was
+unsure (12% and 6%) are not scored. The USV results are simulation only and offline, with no closed-loop formation runs yet.
+Q was chosen from a grid.</div>
+
+<h2>Part IV. Plan for the final presentation</h2>
+<h3>IV.1 Remaining experiments, in order of value per effort</h3>
+<table><tr><th style="width:4%">#</th><th>Experiment</th><th style="width:30%">What it adds</th><th style="width:12%">Effort</th></tr>
+<tr><td>1</td><td>Closed-form Q from ground truth (Method 2a) on both platforms, compared with the innovation-likelihood Q</td><td>The textbook MLE derivation on a slide; checks the grid result</td><td>Half a day</td></tr>
+<tr><td>2</td><td>Wider Q grid on the drone; latency-aware R fit</td><td>Fixes the two known gaps in the current results</td><td>Half a day</td></tr>
+<tr><td>3</td><td>Loss sweep λ<sub>12</sub>/λ<sub>21</sub> = 0.1 to 20 with ROC curves; re-acquire the target after k rejections</td><td>Shows Ch. 2 decision theory directly; fixes the USV gate</td><td>1 day</td></tr>
+<tr><td>4</td><td>PCA and 2-D Fisher LDA plots of the three classes; Hughes curve</td><td>Covers Ch. 3-2 and the dimensionality material</td><td>1 day</td></tr>
+<tr><td>5</td><td>Q-Q plots of the errors; mixture model if they are not Gaussian</td><td>Tests the Gaussian assumption behind every method</td><td>Half a day</td></tr>
+<tr><td>6</td><td>Drone: more test videos; smoothed motion analysis</td><td>Makes the drone result stronger than two folds</td><td>Drone member</td></tr>
+<tr><td>7</td><td>Optional: learned Q inside the USV formation simulator (huge-wave laps, 3 seeds)</td><td>Effect on formation error, not just box accuracy</td><td>1–2 days</td></tr></table>
+
+<h3>IV.2 Slide outline (about 15 minutes)</h3>
+<table><tr><th style="width:8%">Slide</th><th>Content</th><th style="width:14%">Speaker</th></tr>
+<tr><td>1–2</td><td>Two clips: a drone climbing fast and a boat camera in huge waves. Same failure: the box jumps vertically and YOLO misses it.</td><td>Both</td></tr>
+<tr><td>3</td><td>The shared pipeline (Figure 0) and its hand-tuned constants</td><td>Drone</td></tr>
+<tr><td>4–6</td><td>Theory: Gaussian MLE (Σ̂ derivation) → R and Q; the minimum-risk rule as a likelihood-ratio inequality; Fisher LDA</td><td>USV</td></tr>
+<tr><td>7</td><td>Data and ground truth; evaluation protocol</td><td>Both</td></tr>
+<tr><td>8–9</td><td>USV: Figures 1–4 and the likelihood peak at 10×</td><td>USV</td></tr>
+<tr><td>10–11</td><td>Drone: Figure 5, the Bayes gate in fast frames, side-by-side video</td><td>Drone</td></tr>
+<tr><td>12</td><td>LDA projection and Hughes curve</td><td>USV</td></tr>
+<tr><td>13</td><td>What transfers between platforms (learned parameters) and what does not (hand-tuned constants, optical flow on a 40 px boat)</td><td>Both</td></tr>
+<tr><td>14</td><td>Limitations and future work; questions</td><td>Both</td></tr></table>
+
+<h3>IV.3 Proposal talk on Nov 11 (3 minutes, 5 slides)</h3>
+<ol class="small"><li>Problem: two platforms, one failure (video stills, Figure 1).</li>
+<li>The pipeline and its hand-tuned constants (Figure 0).</li>
+<li>Methods from the course: MLE of R and Q, the minimum-risk rule, PCA/LDA (Part II equations).</li>
+<li>First result: hand-tuned against learned Q on both platforms (Figures 4 and 5).</li>
+<li>Schedule and final deliverables (Part I, items 3 and 4).</li></ol>
+
+<h3>Appendix: data and code</h3>
+<p class="small">Code: <code>Tools/pr_course/</code> (USV), <code>Tools/pr_course/drone/</code> (drone replay, labelling, analysis), <code>Tools/pr_course/report/</code> (this report). Data and result files: <code>Experiments/PR_Course/</code>. The drone tracker is the teammate's <code>track.py</code>, ported with its constants unchanged.</p>
+</body></html>

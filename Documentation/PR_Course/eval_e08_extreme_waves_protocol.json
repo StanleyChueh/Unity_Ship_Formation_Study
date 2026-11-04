@@ -1,0 +1,15 @@
+{
+ "name": "e08_extreme_waves",
+ "frozen": "2026-11-04, before any e08 run (development probe or evaluation)",
+ "purpose": "PR course final project: does the MLE-learned process noise Q still beat the hand-tuned drone tracker when waves and weather are more extreme than anything run before, and how does it compare with raw YOLO?",
+ "hypothesis": "H1 (confirmatory): learned Q (x10, learned on e07 data only) tracks more frames with IoU>=0.5 than the hand-tuned tracker, per sequence, Wilcoxon signed-rank, two-sided. No directional hypothesis versus YOLO only: that comparison is descriptive and every result is reported.",
+ "detector": "best_realistic_v2.pt",
+ "simulator_binary_sha256_prefix": "0bfe51325720c950",
+ "groups": [
+  {"role": "extreme_waves", "cases": ["X1", "X2", "X3", "X4", "X5"], "arms": ["on_pv"], "seeds": [6007, 6113, 6229]}
+ ],
+ "replay_arms": {"yolo_only": "newest YOLO leader box, 1 step late", "his": "drone track.py, constants unchanged", "learned_Q": "same, process noise x10 (MLE on e07 training folds; no refit on e08)"},
+ "metrics": "per camera sequence: % frames with IoU>=0.5 against the simulator leader box; same on the fastest 20% vertical-motion frames; t>=0 only via all frames with ground truth",
+ "inclusion_rule": "A development probe (seed 1701, cases X2 and X3, arm on_pv) checks only that the run completes and the leader ground-truth box is visible in >=50% of front-camera frames. A case failing this is dropped BEFORE evaluation and reported as dropped. Detection or tracking results are never used to keep or drop a case.",
+ "all_results_reported": true
+}

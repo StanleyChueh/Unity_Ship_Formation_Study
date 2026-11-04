@@ -1,0 +1,21 @@
+DRONE (block bootstrap over 1 s blocks, 95% CI of the difference in % frames tracked)
+  testv4   L=1: YOLO 77.9  hand 83.8  learnedQ 86.6 | learnedQ-hand +2.9 [-1.2, +7.3] better/worse blocks 7/4 | learnedQ-YOLO +8.8 [+4.1, +13.9]
+   video: drone_testv4_delay1.mp4
+  img7888  L=1: YOLO 81.3  hand 79.2  learnedQ 82.2 | learnedQ-hand +3.0 [+1.1, +5.1] better/worse blocks 9/0 | learnedQ-YOLO +0.9 [-9.1, +9.3]
+   video: drone_img7888_delay1.mp4
+  testv4   L=3: YOLO 40.6  hand 46.8  learnedQ 71.9 | learnedQ-hand +25.2 [+13.3, +35.5] better/worse blocks 13/2 | learnedQ-YOLO +31.3 [+22.5, +41.6]
+   video: drone_testv4_delay3.mp4
+  img7888  L=3: YOLO 52.3  hand 56.5  learnedQ 81.6 | learnedQ-hand +25.1 [+16.2, +35.9] better/worse blocks 22/1 | learnedQ-YOLO +29.3 [+18.7, +41.6]
+   video: drone_img7888_delay3.mp4
+
+USV (per-sequence % frames tracked; Wilcoxon signed-rank, paired over sequences)
+  all         n=64  learnedQ > hand in 64/64 (median +13.7 pts, p=3.5e-12)   learnedQ > YOLO in 42/64 (median +1.9 pts, p=0.11)
+  clear       n=12  learnedQ > hand in 12/12 (median +14.8 pts, p=0.00049)   learnedQ > YOLO in 11/12 (median +2.7 pts, p=0.00098)
+  rain        n= 8  learnedQ > hand in 8/8 (median +12.1 pts, p=0.0078)   learnedQ > YOLO in 7/8 (median +1.7 pts, p=0.016)
+  night       n= 8  learnedQ > hand in 8/8 (median +17.0 pts, p=0.0078)   learnedQ > YOLO in 6/8 (median +2.1 pts, p=0.078)
+  night_rain  n= 8  learnedQ > hand in 8/8 (median +18.5 pts, p=0.0078)   learnedQ > YOLO in 8/8 (median +3.5 pts, p=0.0078)
+  dark_storm  n= 8  learnedQ > hand in 8/8 (median +5.0 pts, p=0.0078)   learnedQ > YOLO in 0/8 (median -14.8 pts, p=0.0078)
+  huge_waves  n=20  learnedQ > hand in 20/20 (median +12.1 pts, p=1.9e-06)   learnedQ > YOLO in 10/20 (median +0.3 pts, p=0.7)
+   video: usv_huge_waves_C10_huge_waves_s_dropout_5147_on_pv_Right.mp4 {'yolo_only': 61.8, 'his': 41.2, 'learned_Q': 65.8}
+   video: usv_clear_C8_clear_speed_s_dropout_5147_on_pv_Left.mp4 {'yolo_only': 86.8, 'his': 68.6, 'learned_Q': 89.1}
+   video: usv_dark_storm_L10_lap_dark_storm_5021_on_pv_Right.mp4 {'yolo_only': 75.9, 'his': 55.4, 'learned_Q': 60.7}

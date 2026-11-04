@@ -1,0 +1,86 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Midterm Q1: Final Project Proposal</title>
+<style>
+@page { size: A4; margin: 15mm 16mm 15mm 16mm; }
+body { font-family: 'Liberation Sans', sans-serif; font-size: 9.7pt; line-height: 1.4; color: #1a1a19; }
+h1 { font-size: 15pt; margin: 0 0 2pt; } .sub { color: #52514e; font-size: 9pt; margin-bottom: 8pt; }
+h2 { font-size: 11.2pt; margin: 10pt 0 4pt; padding-bottom: 2pt; border-bottom: 1.4px solid #2a78d6; break-after: avoid; }
+p { margin: 0 0 5pt; } ol, ul { margin: 0 0 5pt; padding-left: 15pt; } li { margin-bottom: 1.5pt; }
+table { border-collapse: collapse; width: 100%; margin: 3pt 0 6pt; font-size: 8.7pt; break-inside: avoid; }
+th, td { border-bottom: 0.6px solid #d6d5d0; padding: 2.5pt 5pt; text-align: left; vertical-align: top; } th { background: #f3f2ef; }
+td.n { text-align: right; white-space: nowrap; }
+.eq { font-family: 'Liberation Serif', serif; font-size: 10.5pt; text-align: center; margin: 3pt 0 5pt; }
+.box { background: #f3f6fb; border-left: 3px solid #2a78d6; padding: 5pt 8pt; margin: 4pt 0 6pt; }
+.small { font-size: 8.5pt; color: #3d3c39; }
+</style></head><body>
+<h1>Question 1. Final project proposal</h1>
+<div class="sub">Name: ____________________ &nbsp;&nbsp; Student ID: ____________________ &nbsp;&nbsp; Group member (drone platform): ____________________</div>
+
+<h2>1. Topic</h2>
+<p><b>Learning a camera tracker from data: maximum-likelihood noise estimation and Bayesian decision rules for target tracking under
+fast vertical image motion, on a drone and an unmanned surface vessel (USV).</b></p>
+<p><b>Background.</b> Our group tracks one target with a camera on two platforms, using the same pipeline: YOLOv8 detection →
+Lucas-Kanade optical flow → Kalman filter. My teammate tracks a flying drone. I track the leader boat of a simulated USV fleet that keeps
+formation using only a camera. Both fail when the target's box moves up and down quickly in the image. The drone climbs and drops;
+the boat camera pitches in waves. On my USV logs, YOLO's missed detections rise from 1.8% to 14.7% as the box's vertical speed
+rises from 0–2 to 20–40 px per step.</p>
+<p><b>Problem.</b> The tracker's key parameters are hand-tuned for one platform: the process noise Q, the measurement noise
+R = 60·(0.5/confidence)², and a heuristic gate that decides which box is the target. Hand-tuned values do not transfer.
+On the boat, the drone tracker is worse than raw YOLO: 73% vs 85% of frames tracked
+with IoU ≥ 0.5 in clear water.</p>
+<p><b>Approach (course methods).</b></p>
+<ol>
+<li><b>Maximum-likelihood estimation (Ch. 3-1).</b> R is the Gaussian MLE of the detection error,
+Σ̂ = (1/n)Σ(e<sub>k</sub> − μ̂)(e<sub>k</sub> − μ̂)<sup>t</sup>. Q is the value that maximises the likelihood of the filter's innovations:
+<div class="eq">Q̂ = arg max<sub>Q</sub> Σ<sub>k</sub> ln N(ν<sub>k</sub>; 0, S<sub>k</sub>(Q)), &nbsp; S<sub>k</sub> = HP<sub>k|k−1</sub>H<sup>t</sup> + R</div>
+When ground truth exists, Q also has the textbook closed form Q̂ = (1/n)Σ w<sub>k</sub>w<sub>k</sub><sup>t</sup>, with w<sub>k</sub> = x<sub>k+1</sub> − Fx<sub>k</sub>.</li>
+<li><b>Minimum-risk Bayes rule (Ch. 2)</b> to accept or reject each detected box. Features: confidence, Mahalanobis distance, size
+change. Accept if
+<div class="eq">p(x|ω<sub>1</sub>)/p(x|ω<sub>2</sub>) &gt; [(λ<sub>12</sub> − λ<sub>22</sub>)/(λ<sub>21</sub> − λ<sub>11</sub>)] · P(ω<sub>2</sub>)/P(ω<sub>1</sub>)</div>
+where accepting a false box costs more than rejecting a true one.</li>
+<li><b>PCA, Fisher LDA and the Hughes effect (Ch. 3-2, Ch. 1)</b> to choose and visualise the features, and a measured curve of
+accuracy against dimension and training-set size.</li></ol>
+<div class="box"><b>Preliminary result</b> (offline replay against ground truth; Q learned on training data only). Q chosen by
+maximum likelihood is 10× the hand-tuned value on the boat. That matches the frame rates: 10 Hz against 30 fps means about 3× the motion
+per step, so about 9× the variance. With it, the tracker is better than the hand-tuned one on <b>64/64 USV
+sequences</b> (median +13.7 points, Wilcoxon p = 4e-12). In clear water it reaches
+88%, against 85% for YOLO alone. On the drone videos with a slow detector it gains
++25 and +25 points (95% CIs exclude zero).</div>
+
+<h2>2. Related papers</h2>
+<ol class="small">
+<li>R. O. Duda, P. E. Hart, D. G. Stork, <i>Pattern Classification</i>, 2nd ed., Wiley, 2001 (Bayes decision theory, MLE, PCA, LDA).</li>
+<li>R. E. Kalman, "A new approach to linear filtering and prediction problems," <i>J. Basic Engineering</i>, 1960.</li>
+<li>R. K. Mehra, "On the identification of variances and adaptive Kalman filtering," <i>IEEE Trans. Automatic Control</i>, 1970 (ML estimation of Q and R).</li>
+<li>G. F. Hughes, "On the mean accuracy of statistical pattern recognizers," <i>IEEE Trans. Information Theory</i>, 1968.</li>
+<li>R. A. Fisher, "The use of multiple measurements in taxonomic problems," <i>Annals of Eugenics</i>, 1936.</li>
+<li>Y. Bar-Shalom, E. Tse, "Tracking in a cluttered environment with probabilistic data association," <i>Automatica</i>, 1975.</li>
+<li>B. D. Lucas, T. Kanade, "An iterative image registration technique with an application to stereo vision," IJCAI 1981.</li>
+<li>A. Bewley et al., "Simple online and realtime tracking," ICIP 2016.</li></ol>
+
+<h2>3. Project tasks and working schedule</h2>
+<table><tr><th style="width:15%">Week</th><th>Task</th><th style="width:22%">Course link</th></tr>
+<tr><td>Nov 5 – 11</td><td>Proposal and 3-minute talk. Datasets ready: USV runs with simulator ground truth; drone videos labelled by Grounding DINO and checked by eye.</td><td>Ch. 1 design cycle</td></tr>
+<tr><td>Nov 12 – 18</td><td>MLE of R per axis and confidence; Q-Q plots to test the Gaussian assumption; closed-form Q from ground truth</td><td>Ch. 3-1</td></tr>
+<tr><td>Nov 19 – 25</td><td>Q from innovation likelihood on both platforms; compare with the closed form</td><td>Ch. 3-1</td></tr>
+<tr><td>Nov 26 – Dec 2</td><td>Minimum-risk Bayes gate; sweep λ<sub>12</sub>/λ<sub>21</sub>; ROC curves</td><td>Ch. 2, Ch. 1 (ROC)</td></tr>
+<tr><td>Dec 3 – 9</td><td>PCA and Fisher LDA projection of candidate features; Hughes curve</td><td>Ch. 3-2, dimensionality</td></tr>
+<tr><td>Dec 10 – 16</td><td>Full evaluation on both platforms; significance tests; side-by-side videos</td><td>Ch. 1</td></tr>
+<tr><td>Dec 17 → final</td><td>Report, slides, rehearsal (dates adjusted to the announced final)</td><td></td></tr></table>
+
+<h2>4. Final product</h2>
+<ol><li>A Python module shared by both platforms that replaces the hand-tuned constants: MLE noise model (R, Q), Bayes gate and feature analysis.</li>
+<li>Labelled evaluation data: USV camera sequences with exact simulator ground truth, and drone videos with checked pseudo ground truth.</li>
+<li>A reproducible offline replay that scores every tracker version against ground truth, with statistical tests.</li>
+<li>Side-by-side detection videos (YOLO only | hand-tuned | learned) for both platforms.</li></ol>
+
+<h2>5. Project report: components and items</h2>
+<p>Abstract · Introduction (fast vertical image motion on two platforms) · Related work · Problem formulation (state model, classes,
+loss matrix, minimum-risk rule) · Method (MLE derivations for R and Q, Bayes gate, PCA/LDA) · Data and ground truth · Experiments
+(tracking accuracy, fast-motion frames, ablation of each component, Hughes curve) · Statistical tests · Discussion and limitations
+(simulation only for the USV, pseudo ground truth for the drone, failure cases such as the dark storm) · Conclusion · References · Appendix (code).</p>
+
+<h2>6. Project presentation</h2>
+<p>About 15 minutes, both members: (1) two video clips of the failure, drone and boat, 2 min; (2) the shared pipeline and its hand-tuned parts,
+2 min; (3) course methods: MLE derivation, minimum-risk rule, LDA, 3 min; (4) USV results: likelihood peak at 10×, accuracy tables and the
+64/64 test, 3 min; (5) drone results and side-by-side video, 3 min; (6) what transfers between platforms, limitations, questions, 2 min.</p>
+</body></html>

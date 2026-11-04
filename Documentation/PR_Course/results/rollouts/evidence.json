@@ -1,0 +1,192 @@
+{
+ "drone": {
+  "L1|testv4": {
+   "yolo_only": 77.86259541984732,
+   "his": 83.77862595419847,
+   "learned_Q": 86.64122137404581,
+   "learnedQ_minus_his": {
+    "diff": 2.8625954198473282,
+    "ci": [
+     -1.176470588235294,
+     7.254901960784313
+    ],
+    "blocks_better": 7,
+    "blocks_worse": 4,
+    "blocks": 17
+   },
+   "learnedQ_minus_yolo_only": {
+    "diff": 8.778625954198473,
+    "ci": [
+     4.117647058823529,
+     13.92156862745098
+    ],
+    "blocks_better": 12,
+    "blocks_worse": 0,
+    "blocks": 17
+   }
+  },
+  "L1|img7888": {
+   "yolo_only": 81.27128263337117,
+   "his": 79.22814982973894,
+   "learned_Q": 82.17934165720771,
+   "learnedQ_minus_his": {
+    "diff": 2.9511918274687856,
+    "ci": [
+     1.149425287356322,
+     5.057471264367817
+    ],
+    "blocks_better": 9,
+    "blocks_worse": 0,
+    "blocks": 29
+   },
+   "learnedQ_minus_yolo_only": {
+    "diff": 0.9080590238365494,
+    "ci": [
+     -9.083333333333336,
+     9.310344827586208
+    ],
+    "blocks_better": 14,
+    "blocks_worse": 4,
+    "blocks": 29
+   }
+  },
+  "L3|testv4": {
+   "yolo_only": 40.64885496183206,
+   "his": 46.75572519083969,
+   "learned_Q": 71.94656488549617,
+   "learnedQ_minus_his": {
+    "diff": 25.190839694656486,
+    "ci": [
+     13.333333333333334,
+     35.49019607843138
+    ],
+    "blocks_better": 13,
+    "blocks_worse": 2,
+    "blocks": 17
+   },
+   "learnedQ_minus_yolo_only": {
+    "diff": 31.297709923664126,
+    "ci": [
+     22.54901960784314,
+     41.56862745098039
+    ],
+    "blocks_better": 16,
+    "blocks_worse": 0,
+    "blocks": 17
+   }
+  },
+  "L3|img7888": {
+   "yolo_only": 52.32690124858116,
+   "his": 56.526674233825204,
+   "learned_Q": 81.61180476730988,
+   "learnedQ_minus_his": {
+    "diff": 25.08513053348468,
+    "ci": [
+     16.206896551724135,
+     35.86206896551724
+    ],
+    "blocks_better": 22,
+    "blocks_worse": 1,
+    "blocks": 29
+   },
+   "learnedQ_minus_yolo_only": {
+    "diff": 29.284903518728715,
+    "ci": [
+     18.735632183908045,
+     41.60919540229885
+    ],
+    "blocks_better": 22,
+    "blocks_worse": 2,
+    "blocks": 29
+   }
+  }
+ },
+ "usv": {
+  "all": {
+   "n": 64,
+   "better_than_hand": 64,
+   "better_than_yolo": 42,
+   "median_gain_vs_hand": 13.734066106120387,
+   "median_gain_vs_yolo": 1.8928571428571317,
+   "p_vs_hand": 3.5254980732707397e-12,
+   "p_vs_yolo": 0.1084925690242104
+  },
+  "clear": {
+   "n": 12,
+   "better_than_hand": 12,
+   "better_than_yolo": 11,
+   "median_gain_vs_hand": 14.769230769230774,
+   "median_gain_vs_yolo": 2.6923076923076934,
+   "p_vs_hand": 0.00048828125,
+   "p_vs_yolo": 0.0009765625
+  },
+  "rain": {
+   "n": 8,
+   "better_than_hand": 8,
+   "better_than_yolo": 7,
+   "median_gain_vs_hand": 12.107142857142854,
+   "median_gain_vs_yolo": 1.749999999999993,
+   "p_vs_hand": 0.0078125,
+   "p_vs_yolo": 0.015625
+  },
+  "night": {
+   "n": 8,
+   "better_than_hand": 8,
+   "better_than_yolo": 6,
+   "median_gain_vs_hand": 16.96428571428572,
+   "median_gain_vs_yolo": 2.0714285714285765,
+   "p_vs_hand": 0.0078125,
+   "p_vs_yolo": 0.078125
+  },
+  "night_rain": {
+   "n": 8,
+   "better_than_hand": 8,
+   "better_than_yolo": 8,
+   "median_gain_vs_hand": 18.464285714285715,
+   "median_gain_vs_yolo": 3.5357142857142847,
+   "p_vs_hand": 0.0078125,
+   "p_vs_yolo": 0.0078125
+  },
+  "dark_storm": {
+   "n": 8,
+   "better_than_hand": 8,
+   "better_than_yolo": 0,
+   "median_gain_vs_hand": 5.035714285714281,
+   "median_gain_vs_yolo": -14.785714285714295,
+   "p_vs_hand": 0.0078125,
+   "p_vs_yolo": 0.0078125
+  },
+  "huge_waves": {
+   "n": 20,
+   "better_than_hand": 20,
+   "better_than_yolo": 10,
+   "median_gain_vs_hand": 12.139225785014126,
+   "median_gain_vs_yolo": 0.2933604591292216,
+   "p_vs_hand": 1.9073486328125e-06,
+   "p_vs_yolo": 0.7011814117431641
+  },
+  "videos": [
+   {
+    "file": "usv_huge_waves_C10_huge_waves_s_dropout_5147_on_pv_Right.mp4",
+    "sequence": "C10_huge_waves_s_dropout_5147_on_pv/Right",
+    "yolo_only": 61.846153846153854,
+    "his": 41.23076923076923,
+    "learned_Q": 65.84615384615384
+   },
+   {
+    "file": "usv_clear_C8_clear_speed_s_dropout_5147_on_pv_Left.mp4",
+    "sequence": "C8_clear_speed_s_dropout_5147_on_pv/Left",
+    "yolo_only": 86.76923076923076,
+    "his": 68.61538461538461,
+    "learned_Q": 89.07692307692308
+   },
+   {
+    "file": "usv_dark_storm_L10_lap_dark_storm_5021_on_pv_Right.mp4",
+    "sequence": "L10_lap_dark_storm_5021_on_pv/Right",
+    "yolo_only": 75.85714285714286,
+    "his": 55.35714285714286,
+    "learned_Q": 60.71428571428571
+   }
+  ]
+ }
+}
