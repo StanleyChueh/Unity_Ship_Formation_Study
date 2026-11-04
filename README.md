@@ -1,284 +1,175 @@
-# Vision-Only USV Fleet Formation in Unity
+# Pattern Recognition Course Project: Learning a Camera Tracker from Data
 
-A simulated three-boat fleet. Two follower boats hold a triangle formation behind a leader using only a forward camera and a Kalman
-filter, with no leader speed, speed sensor, heading or GPS position. This repo holds the Unity simulation (waves, wakes, rain, fog,
-night), the Python controller, the detector dataset tools, and the experiments behind the results below.
+> This branch holds the **Pattern Recognition course final project**. The original USV formation project README is on the
+> [`main` branch](https://github.com/StanleyChueh/Unity_Ship_Formation_Study/blob/main/README.md).
 
-> **Pattern Recognition course project (this branch).** The camera tracker's hand-tuned noise settings are replaced by a
-> maximum-likelihood estimate (course Ch. 3-1). It is compared with raw YOLO and the hand-tuned tracker on the USV (64 sequences,
-> plus 30 in pre-registered extreme waves) and on drone videos. The learned tracker beats the hand-tuned one in every condition,
-> beats YOLO in clear water, rain and night, and loses to YOLO in the dark storm.
-> Charts, statistics and detection clips: **[Documentation/PR_Course/README.md](Documentation/PR_Course/README.md)**.
->
-> ![USV, sea state 5: hand-tuned tracker loses the leader, MLE-learned Q stays on it](Documentation/PR_Course/media/gif_usv_sea5.gif)
+Our group tracks one target with a camera on two platforms using the same pipeline: **YOLOv8 → Lucas-Kanade optical flow → Kalman
+filter**. One member tracks a flying drone; the other tracks the leader boat of a simulated unmanned surface vessel (USV) fleet that
+keeps formation using only a camera. Both fail when the target's box moves up and down quickly in the image: the drone climbs and
+drops, and the boat's camera pitches in waves.
 
-![Kalman ON vs OFF during a blocked detection in a dark storm](Documentation/KalmanStudy/REPORT_PACKAGE/vision_only/hero_on_vs_off.jpg)
+The drone tracker works on drone video, but its key settings were tuned by hand: process noise Q, measurement noise
+R = 60·(0.5/confidence)², and a gate that decides which box is the target. **This project replaces those hand-tuned constants with
+methods from the course** and compares three trackers against ground truth on both platforms:
 
-*The same dark storm lap at the moment the detector is blocked for a test: Kalman ON keeps predicting, and Kalman OFF has lost the leader.*
+| Tracker | What it is |
+|---|---|
+| **YOLO only** | The newest YOLO box, used as is |
+| **Drone tracker, hand-tuned** | The teammate's `track.py` with its constants unchanged |
+| **Drone tracker + MLE-learned Q** | The same tracker, with Q estimated by maximum likelihood from training data (course method) |
 
-```mermaid
-flowchart LR
-    A[Camera] --> B[YOLOv8<br/>finds the leader's box]
-    B --> C[Kalman filter<br/>range + leader speed]
-    C --> D[Controller<br/>throttle + steering]
-    D -. own commands .-> C
-```
+![USV, sea state 5: the hand-tuned tracker loses the leader while the MLE-learned Q tracker stays on it](Documentation/PR_Course/media/gif_usv_sea5.gif)
 
-> **Simulation only.** Nothing has been run on a real boat. The control loop runs at a fixed 10 Hz with zero processing
-> delay. Hulls use thrust, steering torque, drag and wave-driven heave, pitch and roll. There are no full ship
-> hydrodynamics, wind or currents, and the leader follows its path perfectly.
+*USV in sea state 5 (waves about 3.9 m). Green is the simulator's true box. The hand-tuned box (middle) is lost; the learned-Q box
+(right) stays on the leader.*
 
-> **What runs where.** The vision-only tracker lives in the test harness, `Tools/kalman_study`. It is not integrated into `Assets/usv`
-> yet, so `python usv_controller.py` still uses the original controller, the leader's speed, and `best_realistic.pt` by default
-> (`YOLO_MODEL_PATH` in `Assets/usv/config.py`).
+## Methods from the course
 
-## Results
+| Course chapter | Used for |
+|---|---|
+| Ch. 3-1 Maximum-likelihood estimation | **Process noise Q** (main method) and measurement noise R |
+| Ch. 2 Bayesian decision theory | Minimum-risk rule to accept or reject each detected box |
+| Ch. 1 Design cycle, ROC | Labelled data, train/test split, evaluation against ground truth |
+| Ch. 3-2 PCA, Fisher LDA; Hughes effect | Feature analysis (planned for the final presentation) |
 
-All numbers are formation RMSE: the root mean square distance of each follower from its slot, from t = 15 s to the end of
-the run. "Broken" means error above 10 m.
+**Maximum-likelihood Q.** For a correct filter model, the innovations ν<sub>k</sub> (each measurement minus the filter's prediction)
+are independent Gaussian, ν<sub>k</sub> ~ N(0, S<sub>k</sub>). We choose the Q that makes the observed innovations most likely:
 
-**Vision-only tracking, Kalman ON vs OFF.** Followers use only the camera and their own throttle commands: no leader speed, no
-speed sensor, no heading. Mean of 2 seeds per lap; recovery is the time back in formation after a 2 s bbox dropout.
+$$\hat{Q} = \arg\max_Q \sum_k \ln \mathcal{N}\big(\nu_k;\, 0,\, S_k(Q)\big), \qquad S_k = H P_{k|k-1} H^\top + R$$
 
-| Full circle lap | RMSE, Kalman | RMSE, Kalman OFF | Recovery, Kalman | Recovery, Kalman OFF |
-|---|---:|---:|---:|---:|
-| Heavy rain | **2.34 m** | 4.24 m | 0.9 s | 1.8 s |
-| Night | **3.89 m** | 7.96 m | 0.9 s | 4.1 s |
-| Night + rain | **3.66 m** | 7.03 m | 0.9 s | 5.2 s |
-| Dark storm | **3.53 m** | 7.07 m | 1.2 s | 5.0 s |
+This is the Ch. 3-1 principle (choose θ to maximise p(D | θ)) with the innovations as the samples. Because S<sub>k</sub> depends on Q
+through the filter's recursion, we maximise over a grid. Q is always learned on training data that excludes the test sequences.
 
-![Formation RMSE per run, Kalman ON vs OFF, vision-only](Documentation/KalmanStudy/REPORT_PACKAGE/vision_only/on_vs_off_chart.png)
+**Minimum-risk Bayes rule.** Accept a box when
 
-Huge waves are still the weak point: on a full lap, one of two Kalman runs lost the leader for good after a dropout (891 m; the other
-3.55 m), while Kalman OFF held both at about 7 m. With speed changes added, median error is 14.73 m for Kalman and 80.91 m for Kalman OFF,
-with far-out-of-formation runs in both. In clear water with speed changes, it is 8.46 m vs 10.39 m. These are 2-3 seeds per case.
+$$\frac{p(x\mid\omega_1)}{p(x\mid\omega_2)} > \frac{\lambda_{12}-\lambda_{22}}{\lambda_{21}-\lambda_{11}}\cdot\frac{P(\omega_2)}{P(\omega_1)}$$
 
-### Earlier results, with the leader's true speed available
+where ω<sub>1</sub> is the target, and accepting a false box (λ<sub>12</sub>) costs more than rejecting a true one (λ<sub>21</sub>).
 
-**Kalman filter vs baselines** (8 held-out seeds; clear water, huge waves and rain):
+## Why this matters: fast vertical motion breaks detection
 
-| Comparison | RMSE change | Seeds favouring Kalman | Exact p |
-|---|---:|---:|---:|
-| Kalman vs no filter (same controller) | -68.8% | 8/8 | 0.0078 |
-| Kalman vs production Kalman OFF | -48.9% | 8/8 | 0.0078 |
-| Kalman vs EMA filter (same controller) | -33.2% | 6/8 | 0.078, not confirmed |
+![YOLO errors rise with the vertical speed of the leader's box](Documentation/PR_Course/media/chart_motivation.png)
 
-An earlier image-space Kalman filter did not beat its baseline on held-out seeds. Both results are in
-[FINAL_REPORT.md](Documentation/KalmanStudy/FINAL_REPORT.md).
+On the USV, missed detections rise from 1.8% to 14.7%, and wrong boxes from 0.5% to 7.6%, as the box moves faster vertically.
 
-**Weather-trained detector** (`best_realistic_v2.pt`, full circle laps, mean of 2 seeds). The original detector found the leader
-in 0-3% of frames in these conditions and every method failed. With the retrained detector the Kalman filter gets a fresh detection
-in about 88% of frames, close to the maximum because scheduled 2 s dropouts remove about 11%.
+## Result 1: maximum likelihood finds the right Q for each platform
 
-| Condition | Kalman filter | Kalman OFF | No bbox filtering |
-|---|---:|---:|---:|
-| Heavy rain | **2.73 m** | 5.62 m | 4.97 m |
-| Night | **3.79 m** | 7.06 m | 301.74 m (1 of 2 seeds lost) |
-| Night + rain | **3.71 m** | 7.00 m | 6.26 m |
-| Dark storm | **3.31 m** | 6.14 m | 5.59 m |
+![Innovation log-likelihood peaks at 10 times the hand-tuned Q](Documentation/PR_Course/media/chart_q_likelihood.png)
 
-After each 2 s dropout the Kalman filter is back in formation in 0.9 s, Kalman OFF in about 6 s, and no filtering in 7.5-9 s. The
-detector was trained and tested on the same simulated weather, so this says nothing about real rain or night cameras.
-Long, tight turns (radius about 164 m) still break formation for every method, even with detection working.
-Details: [weather_v2_detector](Documentation/KalmanStudy/REPORT_PACKAGE/weather_v2_detector/README.md).
+On the boat, the likelihood peaks at **10× the drone setting** in both training folds. That matches the frame rates: the boat camera
+runs at 10 Hz and the drone video at 30 fps, so the box moves about 3× as far per step, and the variance is about 9× larger. The
+hand-tuned value was right for the drone and wrong for the boat; maximum likelihood finds the right one from data.
 
-**What leader speed adds.** All results in this section, including Kalman OFF, receive the leader's true speed from the simulator, so
-they are not vision-only. Simply deleting it from that controller makes the formation collapse, which is why the vision-only filter
-estimates it instead. Comparison with that filter (median of 3 seeds, broken time in brackets):
+## Result 2: USV, 64 camera sequences in 6 conditions
 
-| Condition | With leader speed | Camera + own speed | Camera + own commands only |
-|---|---:|---:|---:|
-| Calm, constant speed | 2.90 m (0%) | **1.45 m** (0%) | 2.22 m (0%) |
-| Clear, speed changes + S-turns | **5.15 m** (1.4%) | 7.85 m (25.8%) | 8.48 m (26.3%) |
-| Night, speed changes + S-turns | **5.69 m** (2.0%) | 6.65 m (14.5%) | 6.47 m (12.2%) |
-| Huge waves, speed changes + S-turns | **5.42 m** (4.5%) | 12.26 m (49.8%) | 13.94 m (39.3%) |
+![USV tracking accuracy per condition](Documentation/PR_Course/media/chart_usv_conditions.png)
 
-So the fleet can track without leader speed, and does better at constant speed, but it loses accuracy when the leader changes
-speed and is weakest in huge waves, where one of three "camera + own speed" seeds lost the formation.
-Details: [vision_only](Documentation/KalmanStudy/REPORT_PACKAGE/vision_only/README.md).
+| Condition | YOLO only | Hand-tuned | **Learned Q** | Learned Q better than hand-tuned | Learned Q vs YOLO only |
+|---|---:|---:|---:|---|---|
+| Clear | 85.3% | 73.2% | **88.4%** | 12/12 sequences | better, 11/12 (p = 0.001) |
+| Rain | 89.3% | 80.1% | **91.3%** | 8/8 | better, 7/8 (p = 0.016) |
+| Night | 76.1% | 60.7% | **77.8%** | 8/8 | better, 6/8 (p = 0.078) |
+| Night + rain | 77.1% | 63.1% | **81.1%** | 8/8 | better, 8/8 (p = 0.008) |
+| Dark storm | **73.2%** | 53.7% | 58.5% | 8/8 | **worse**, 0/8 (p = 0.008) |
+| Huge waves (sea 3) | 50.6% | 38.2% | **51.1%** | 20/20 | tie (p = 0.7) |
+| **All** | | | | **64/64 (p = 4×10⁻¹²)** | 42/64 (p = 0.11) |
 
-![Leader speed estimated from images](Documentation/KalmanStudy/REPORT_PACKAGE/vision_only/fig_c_leader_speed_estimate.png)
+Percentages are the share of frames whose box overlaps the true box with IoU ≥ 0.5, pooled over each condition's sequences. The
+"better than" counts are per sequence, with p from a two-sided Wilcoxon signed-rank test. YOLO results reach the tracker one control
+step (0.1 s) late, for all three trackers.
 
-Videos are not stored in this repo because of their size.
+![USV in huge waves](Documentation/PR_Course/media/gif_usv_huge_waves.gif)
 
-# Python Setup
+## Result 3: USV, extreme waves and weather (pre-registered)
 
-Create the Conda environment:
+We then ran 15 new simulations (30 camera sequences) with waves larger than anything run before: sea 4 is about 3.1 m and sea 5 about
+3.9 m. The conditions, seeds, analysis and video-selection rule were fixed in
+[`eval_e08_extreme_waves_protocol.json`](Documentation/PR_Course/eval_e08_extreme_waves_protocol.json) before any run. Q was **not** refitted: it is the 10×
+learned from the earlier runs.
+
+![USV tracking accuracy in extreme waves and weather](Documentation/PR_Course/media/chart_usv_extreme.png)
+
+| Case | YOLO only | Hand-tuned | Learned Q | Learned Q better than hand-tuned | Learned Q vs YOLO only |
+|---|---:|---:|---:|---|---|
+| Sea 4, clear | **54.7%** | 41.6% | 54.6% | 5/6 | tie (3/6, p = 1) |
+| Sea 5, clear | 49.3% | 37.7% | **51.8%** | 6/6 | slightly better (5/6, p = 0.094) |
+| Sea 4 + heavy rain | **53.5%** | 41.6% | 51.3% | 6/6 | slightly worse (1/6, p = 0.22) |
+| Sea 4 + dark storm | **48.9%** | 34.7% | 38.5% | 5/6 | worse (0/6, p = 0.031) |
+| Sea 3 + dark storm | **57.4%** | 40.1% | 46.5% | 6/6 | worse (0/6, p = 0.031) |
+| **All** | 52.7% | 39.1% | 48.4% | **28/30 (p = 3.5×10⁻⁶)** | worse overall (9/30, p = 0.006) |
+
+| Sea 4 + heavy rain: YOLO slightly ahead of learned Q, both far ahead of hand-tuned | Sea 4 + dark storm: the limit case |
+|---|---|
+| ![USV sea 4 heavy rain](Documentation/PR_Course/media/gif_usv_sea4_heavy_rain.gif) | ![USV sea 4 dark storm](Documentation/PR_Course/media/gif_usv_dark_storm.gif) |
+
+## Result 4: drone videos
+
+The drone ground truth comes from Grounding DINO (2 prompts × horizontal flip), fused with the teammate's own labelling rule. YOLO is
+**not** one of the opinions, so the labels are independent of the model being tested, and they were checked by eye
+([audit sheets](Documentation/PR_Course/results/drone)). Q is learned on one video and tested on the other. The Tello video is a different drone in a
+different (indoor) scene, never used for training or for choosing Q.
+
+![Drone tracking accuracy](Documentation/PR_Course/media/chart_drone.png)
+
+| Test video | YOLO only | Hand-tuned | Learned Q | Learned Q − hand-tuned, points [95% CI] |
+|---|---:|---:|---:|---|
+| testv4, 1-frame delay | 77.9% | 83.8% | **86.6%** | +2.9 [−1.2, +7.3] |
+| IMG_7888, 1-frame delay | 81.3% | 79.2% | **82.2%** | +3.0 [+1.1, +5.1] |
+| testv4, 3-frame delay | 40.6% | 46.8% | **71.9%** | +25.2 [+13.3, +35.5] |
+| IMG_7888, 3-frame delay | 52.3% | 56.5% | **81.6%** | +25.1 [+16.2, +35.9] |
+| Held-out Tello, 1-frame delay | 33.0% | 46.5% | **70.3%** | +23.9 [+9.0, +43.3] |
+| Held-out Tello, 3-frame delay | 20.8% | 39.4% | **57.8%** | +18.3 [+2.3, +34.7] |
+
+Confidence intervals come from resampling 1-second blocks of frames (block bootstrap). A 1-frame delay is the teammate's real setup
+(YOLO takes 11 ms per frame; a frame lasts 33 ms); a 3-frame delay imitates a slower onboard computer.
+
+![Drone with a slow detector](Documentation/PR_Course/media/gif_drone_slow_detector.gif)
+
+## What the results show
+
+1. **Hand-tuned constants do not transfer between platforms.** The drone tracker is worse than raw YOLO on the boat in every condition.
+2. **The MLE-learned Q beats the hand-tuned tracker in every condition we tested.** It wins on 64/64 normal boat sequences and 28/30
+   extreme ones. On the drone it is higher in all 6 cases (+3 to +25 points), and the 95% interval excludes zero in 5 of them.
+3. **Against raw YOLO it is a trade-off.** The learned tracker beats YOLO in clear water, rain, night and night + rain, and on the
+   drone whenever detections are late or missing. It ties YOLO in huge waves. In heavy rain with huge waves YOLO is slightly
+   ahead, and **in the dark storm YOLO is clearly better (by about 10 to 15 points)**. A filter predicts motion; when detections are
+   sparse and the camera pitches unpredictably, a fresh detection beats a prediction. Learning a separate Q for each sea condition,
+   chosen by a Bayes/LDA condition classifier, is the next step.
+4. **Other course methods gave mixed results.** The MLE-learned R and the Bayes gate help on the drone with its real delay (the gate
+   reaches 96% in testv4's fastest frames and halves wrong-target frames on IMG_7888). They hurt on the boat, where wrong boxes are
+   rare and rejecting true ones makes the tracker drift.
+
+**Limitations.** These are offline replays of recorded frames, not closed-loop runs, and the USV is simulation only. The drone ground
+truth is automatic, from two training videos plus one held-out video. In sea state 5 the camera sometimes dips below the wave
+surface (a grey band). On the held-out Tello video with a 3-frame delay, the Q search chose the edge of its range (1000×), so that
+value is unreliable.
+
+## Files
+
+| Path | Contents |
+|---|---|
+| [`PR_Final_Project_Proposal_and_Method.pdf`](Documentation/PR_Course/PR_Final_Project_Proposal_and_Method.pdf) | Full proposal, method and results report (10 pages) |
+| [`Midterm_Q1_Answer.pdf`](Documentation/PR_Course/Midterm_Q1_Answer.pdf), [`Midterm_Q1_Answer_zh-TW.pdf`](Documentation/PR_Course/Midterm_Q1_Answer_zh-TW.pdf) | Midterm Question 1 answer (English and Traditional Chinese) |
+| [`eval_e08_extreme_waves_protocol.json`](Documentation/PR_Course/eval_e08_extreme_waves_protocol.json) | Pre-registered extreme-wave protocol |
+| [`results/`](Documentation/PR_Course/results) | Result JSONs, logs, drone labels, YOLO outputs, ground-truth audit sheets |
+| [`media/`](Documentation/PR_Course/media) | Charts and GIF clips on this page |
+| [`../../Tools/pr_course/`](Tools/pr_course) | Tracker replay, labelling, analysis, video rendering, report builders |
+
+**Full-length videos** are not committed (the repo ignores `*.mp4`). They are written to `Experiments/PR_Course/rollouts/`:
+`HIGHLIGHT_learnedQ_vs_handtuned.mp4`, `drone_*_delay{1,3}.mp4`, `usv_*.mp4` and `usv_e08_*.mp4`. Each has three panels (YOLO only,
+hand-tuned, learned Q), the true box in green, the live IoU and the running share of well-tracked frames.
+
+## Reproduce
 
 ```bash
-conda env create -f environment.yml
-conda activate unity_boat
+cd Tools/pr_course
+python usv_replay.py ../../Experiments/PR_Course/usv/usv_report.json        # USV: learn R and Q per fold, all trackers
+python drone/analyze.py ../../Experiments/PR_Course/drone                    # drone: cross-video training and testing
+python rollouts.py ../../Experiments/PR_Course/rollouts                      # statistics and full-length videos
+python new_video_eval.py img7923 ../../Experiments/PR_Course/rollouts        # held-out Tello video
+python e08_eval.py ../../Experiments/PR_Course/rollouts                      # extreme-wave analysis
+python report/make_readme_media.py ../../Documentation/PR_Course/media       # charts and GIFs on this page
 ```
 
-Or install with pip only:
-
-```bash
-pip install -r requirements.txt
-```
-
-# Usage
-
-Run Controller(Keyboard or Trajectory following)
-
-```bash
-cd Assets
-python usv_controller.py
-```
-
-> **Note**
-> 
-> User can set Control mode to Keyboard or Trajectory following mode in config.py
-> 
-> By setting ```LEADER_INITIAL_CONTROL_MODE = "Trajectory"``` or ```LEADER_INITIAL_CONTROL_MODE = "Keyboard"``` to switch control mode.
-> 
-> Set trajectory mode: ```LEADER_TRAJECTORY_MODE = "Circle"``` or ```LEADER_TRAJECTORY_MODE = "Straight"```
-## Run evaluation matrices
-
-```
-python usv/plot_snapshots.py --snapshot ../experiment_metrics/run_20260531_113548_snapshots.csv
-```
-
-# Run the Kalman study
-
-The study uses a frozen Unity build and a private copy of the Python code for each run, so it does not touch `Assets/usv`.
-Build the player once, which needs Unity 2022.3.62f3 installed:
-
-```bash
-cd Tools/kalman_study
-python3 run_study.py --build-only
-```
-
-Re-run the with/without leader speed test, using one process per parallel simulator (`--shard 0` to `7`), then analyze it:
-
-```bash
-python3 run_vision_only.py --stage evaluation --tag e06_vision_only \
-  --protocol ../../Documentation/KalmanStudy/eval_e06_vision_only_protocol.json --shard 0 --nshards 8
-python3 analyze_arms.py ../../Experiments/KalmanStudy/robust_evaluation/e06_vision_only
-python make_vision_only_report.py
-```
-
-Raw run data goes to `Experiments/KalmanStudy/`, which is not committed. Protocols, reports and figures are in
-`Documentation/KalmanStudy/`. Dataset generation and detector training are described in
-[Tools/boat_dataset/README.md](Tools/boat_dataset/README.md).
-
-# Codebase
-
-## USV Controller (Modular Split)
-
-Callable functions for usv_controller.py 
-
-Modules
--------
-- `config.py`: all tunable constants and ports.
-- `state.py`: shared runtime state and thread locks.
-- `helpers.py`: common utility helpers and drawing helpers.
-- `vision.py`: TCP camera receive + YOLO/depth/wake processing thread.
-- `control.py`: vision-based control logic and command output.
-- `app.py`: startup wiring, main loop, and UI loop.
-
--------
-```text
-usv_controller.py
-└── calls usv.app.main()
-
-usv/
-├── __init__.py
-│   └── exports main
-│
-├── app.py
-│   ├── creates UDP sockets
-│   ├── creates OpenCV windows
-│   ├── starts TCP camera receiver threads
-│   ├── starts central vision processing thread
-│   ├── runs main control loop
-│   ├── calls process_boat_vision_based() for Left boat
-│   ├── calls process_boat_vision_based() for Right boat
-│   └── displays processed frames
-│
-├── config.py
-│   ├── UDP / TCP port settings
-│   ├── camera stream configuration
-│   ├── YOLO model settings
-│   ├── wake detection parameters
-│   ├── tracking / prediction parameters
-│   └── controller parameters
-│
-├── state.py
-│   ├── vision_lock
-│   ├── frame_lock
-│   ├── vision_states
-│   ├── latest_frames
-│   ├── display_frames
-│   ├── formation_targets
-│   └── controller_states
-│
-├── vision.py
-│   ├── tcp_camera_receiver_thread()
-│   ├── cv_processing_thread()
-│   ├── detect_stern_wake()
-│   ├── fuse_track_sources()
-│   ├── lock_visual_reference()
-│   ├── update_track_prediction()
-│   ├── configure_yolo_runtime()
-│   └── warmup_yolo_runtime()
-│
-├── control.py
-│   ├── process_boat_vision_based()
-│   ├── compute_pair_catchup_boost()
-│   ├── get_tracking_gains()
-│   ├── normalize_area_error()
-│   ├── shape_area_error()
-│   ├── compute_centered_cruise_throttle()
-│   ├── compute_turn_catchup_boost()
-│   └── compute_visual_far_boost()
-│
-└── helpers.py
-    ├── recv_exact()
-    ├── make_status_frame()
-    ├── clamp()
-    ├── blend_value()
-    ├── get_peer_boat_side()
-    ├── filter_steer_command()
-    ├── draw_labeled_box()
-    ├── draw_prediction_arrow()
-    └── apply_camera_shake()
-```
-
-Entrypoint
-----------
-- Run `Assets/usv_controller.py`.
-
-
-# Setup and push
-Setup once
-
-```
-sudo apt install git-lfs
-git lfs install
-```
-
-Track large files
-
-```
-git lfs track "*.zip"
-git lfs track "*.pt"
-git lfs track "*.mp4"
-```
-
-Add files
-```
-git add .gitattributes
-
-git add .
-```
-
-Commit and push
-```
-git commit -m "message"
-
-git push origin main
-```
- 
-
-
-
+The extreme-wave simulations use the frozen simulator build (`Tools/kalman_study/run_extreme_waves.py`, three shards). Drone inputs
+(the teammate's videos and `best.pt`) are not in the repo.
