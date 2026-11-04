@@ -4,6 +4,14 @@ A simulated three-boat fleet. Two follower boats hold a triangle formation behin
 filter, with no leader speed, speed sensor, heading or GPS position. This repo holds the Unity simulation (waves, wakes, rain, fog,
 night), the Python controller, the detector dataset tools, and the experiments behind the results below.
 
+> **Pattern Recognition course project (this branch).** The camera tracker's hand-tuned noise settings are replaced by a
+> maximum-likelihood estimate (course Ch. 3-1). It is compared with raw YOLO and the hand-tuned tracker on the USV (64 sequences,
+> plus 30 in pre-registered extreme waves) and on drone videos. The learned tracker beats the hand-tuned one in every condition,
+> beats YOLO in clear water, rain and night, and loses to YOLO in the dark storm.
+> Charts, statistics and detection clips: **[Documentation/PR_Course/README.md](Documentation/PR_Course/README.md)**.
+>
+> ![USV, sea state 5: hand-tuned tracker loses the leader, MLE-learned Q stays on it](Documentation/PR_Course/media/gif_usv_sea5.gif)
+
 ![Kalman ON vs OFF during a blocked detection in a dark storm](Documentation/KalmanStudy/REPORT_PACKAGE/vision_only/hero_on_vs_off.jpg)
 
 *The same dark storm lap at the moment the detector is blocked for a test: Kalman ON keeps predicting, and Kalman OFF has lost the leader.*
