@@ -54,7 +54,10 @@ maximum likelihood is 10× the hand-tuned value on the boat. That matches the fr
 per step, so about 9× the variance. With it, the tracker is better than the hand-tuned one on <b>{ua['better_than_hand']}/{ua['n']} USV
 sequences</b> (median +{ua['median_gain_vs_hand']:.1f} points, Wilcoxon p = {ua['p_vs_hand']:.0e}). In clear water it reaches
 {u('clear','his+learned_Q'):.0f}%, against {u('clear','yolo_only'):.0f}% for YOLO alone. On the drone videos with a slow detector it gains
-{d3['learnedQ_minus_his']['diff']:+.0f} and {d3b['learnedQ_minus_his']['diff']:+.0f} points (95% CIs exclude zero).</div>
+{d3['learnedQ_minus_his']['diff']:+.0f} and {d3b['learnedQ_minus_his']['diff']:+.0f} points (95% CIs exclude zero), and +24 points on a held-out video of a
+different drone. In pre-registered extreme waves (sea 4–5, heavy rain, dark storm) it still beats the hand-tuned tracker on
+<b>28/30 new sequences</b> (p = 3.5e-06). Against raw YOLO it ties or comes close in clear and rainy huge waves, but trails by about
+10 points in the dark storm: that limit is what the final project will address.</div>
 
 <h2>2. Related papers</h2>
 <ol class="small">

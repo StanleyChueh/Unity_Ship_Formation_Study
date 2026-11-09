@@ -47,7 +47,9 @@ Q 則選擇使濾波器新息（innovation）概似最大的值：
 <b>{ua['better_than_hand']}/{ua['n']} 個 USV 序列</b>上都優於手調版本（中位數 +{ua['median_gain_vs_hand']:.1f} 個百分點，Wilcoxon 檢定
 p = {ua['p_vs_hand']:.0e}）；平靜海況下達到 {u('clear','his+learned_Q'):.0f}%，高於單純 YOLO 的 {u('clear','yolo_only'):.0f}%。
 在偵測器延遲較大的無人機影片上，分別提升 {d3['learnedQ_minus_his']['diff']:+.0f} 與 {d3b['learnedQ_minus_his']['diff']:+.0f} 個百分點
-（95% 信賴區間不包含 0）。</div>
+（95% 信賴區間不包含 0）；在未參與訓練的另一台無人機影片上提升 24 個百分點。在預先登錄的極端海況（海況 4–5、大雨、暗夜暴風雨）中，
+仍在 <b>28/30 個新序列</b>上優於手調版本（p = 3.5e-06）；與單純 YOLO 相比，在晴天與大雨的巨浪中持平或接近，但在暗夜暴風雨中落後約
+10 個百分點，這正是期末專題要解決的限制。</div>
 
 <h2>二、相關文獻</h2>
 <ol class="small">
